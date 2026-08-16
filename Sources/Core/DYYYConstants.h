@@ -23,6 +23,24 @@
 
 #define DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY @"DYYYDisableFeedNowPlayingInfo"
 
+// 互动数超过一万时显示完整整数，关闭后恢复宿主的万字缩写
+#define DYYY_SHOW_EXACT_INTERACTION_COUNTS_KEY @"DYYYShowExactInteractionCounts"
+
+// 开启设备最高可用帧率（ProMotion 门闩 + 抖音 AWEProMotionFPSBooster / 关闭 DisplayLink 降帧；负载过重时自动降档）
+#define DYYY_ENABLE_HIGH_FPS_KEY @"DYYYEnableHighFPS"
+
+// 实时帧率浮窗（依赖 DYYYEnableHighFPS）
+#define DYYY_SHOW_FPS_OVERLAY_KEY @"DYYYShowFPSOverlay"
+
+// 保存媒体到相册时是否写入作者、作品链接、文案和发布时间
+#define DYYY_ALBUM_MEDIA_DESCRIPTION_KEY @"DYYYAlbumMediaDescription"
+
+// 快捷倍速 / 一键清屏按钮：开启后才按四边固定边距贴边拖动；默认关闭
+#define DYYY_SPEED_BUTTON_STICK_TO_EDGE_KEY @"DYYYSpeedButtonStickToEdge"
+#define DYYY_CLEAR_BUTTON_STICK_TO_EDGE_KEY @"DYYYClearButtonStickToEdge"
+#define DYYY_RESET_SPEED_BUTTON_POSITION_KEY @"DYYYResetSpeedButtonPosition"
+#define DYYY_RESET_CLEAR_BUTTON_POSITION_KEY @"DYYYResetClearButtonPosition"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

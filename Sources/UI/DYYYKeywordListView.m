@@ -71,7 +71,7 @@
         self.keywordsTableView = [[UITableView alloc] initWithFrame:CGRectMake(20, 54, 260, tableHeight)];
         self.keywordsTableView.delegate = self;
         self.keywordsTableView.dataSource = self;
-        self.keywordsTableView.backgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+        self.keywordsTableView.backgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
         self.keywordsTableView.layer.cornerRadius = 8;
         self.keywordsTableView.tableFooterView = [UIView new];  // 隐藏空行分隔线
         self.keywordsTableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
@@ -82,7 +82,7 @@
         // 添加按钮 - 根据模式设置背景色
         self.addButton = [UIButton buttonWithType:UIButtonTypeSystem];
         self.addButton.frame = CGRectMake(20, addButtonY, 260, 40);
-        self.addButton.backgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+        self.addButton.backgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
         self.addButton.layer.cornerRadius = 8;
         NSString *addTitle = self.addItemTitle ?: @"添加";
         [self.addButton setTitle:[@"+ " stringByAppendingString:addTitle] forState:UIControlStateNormal];

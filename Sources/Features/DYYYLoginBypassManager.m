@@ -5,6 +5,7 @@
 #import <objc/message.h>
 
 static NSString *const kDYYYLoginBypassManagerEnabledKey = @"DYYYEnableLoginBypass";
+static NSString *const kDYYYOfficialAwemeBundleIdentifier = @"com.ss.iphone.ugc.Aweme";
 static NSString *const kDYYYLoginBypassDisabledToast = @"检测账号登录，绕登录设置关闭";
 static NSString *const kDYYYLoginBypassManualCloseToast = @"检测登录态失败，请手动关闭绕登录设置";
 
@@ -17,7 +18,7 @@ typedef NS_ENUM(NSUInteger, DYYYOfficialAccountLoginState) {
 static NSString *dyyyLoginBypassDefaultsDomainName = nil;
 static BOOL dyyyLoginBypassInitialConfigurationPending = NO;
 static BOOL dyyyLoginBypassDisableInFlight = NO;
-static NSString *dyyyLoginBypassLastHandledUserID = nil;
+static BOOL dyyyLoginBypassPostLoginNetworkRestore = NO;
 static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
 
 @implementation DYYYLoginBypassManager
@@ -144,10 +145,7 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
 }
 
 + (BOOL)officialUserServiceConfirmsLoginWeakly {
-    if ([self officialAccountLoginState] != DYYYOfficialAccountLoginStateLoggedIn) {
-        return NO;
-    }
-    return [self currentOfficialUserID].length > 0;
+    return [self officialAccountLoginState] == DYYYOfficialAccountLoginStateLoggedIn;
 }
 
 #pragma mark - Defaults / initial configuration
@@ -169,6 +167,7 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
 
 + (void)persistLoginBypassEnabled:(BOOL)enabled {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kDYYYLoginBypassManagerEnabledKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
     dyyyLoginBypassInitialConfigurationPending = NO;
 }
 
@@ -225,12 +224,16 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
           return;
       }
       if ([self hasPersistentLoginBypassSetting]) {
+          if ([self officialAccountLoginState] == DYYYOfficialAccountLoginStateLoggedIn) {
+              dyyyLoginBypassPostLoginNetworkRestore = YES;
+          }
           return;
       }
 
       // 同步探测：已登录场景尽早写 NO，避免 registerDefaults=YES 造成短暂误开。
       DYYYOfficialAccountLoginState loginState = [self officialAccountLoginState];
       if (loginState == DYYYOfficialAccountLoginStateLoggedIn) {
+          dyyyLoginBypassPostLoginNetworkRestore = YES;
           [self persistLoginBypassEnabled:NO];
           NSLog(@"[DYYY][绕登录] 首次同步配置：已登录，绕登录已关闭");
           return;
@@ -246,6 +249,253 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
         [self attemptInitialConfigurationWithRetryIndex:0];
       });
     });
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self attemptReconcileWithRetryIndex:0];
+    });
+}
+
+#pragma mark - Bundle identity / request rewrite
+
++ (NSArray<NSString *> *)officialFamilyBundleIdentifiers {
+    static NSArray<NSString *> *bundleIdentifiers = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      bundleIdentifiers = @[
+          @"com.ss.iphone.ugc.Aweme",
+          @"com.ss.iphone.ugc.Aweme.beta",
+          @"com.ss.iphone.ugc.Aweme.internal",
+          @"com.ss.iphone.ugc.Aweme.lite",
+          @"com.ss.iphone.ugc.aweme.lite"
+      ];
+    });
+    return bundleIdentifiers;
+}
+
++ (BOOL)isNumericAwemeCloneBundleIdentifier:(NSString *)bundleIdentifier {
+    if (bundleIdentifier.length != kDYYYOfficialAwemeBundleIdentifier.length + 4) {
+        return NO;
+    }
+    if (![bundleIdentifier hasPrefix:kDYYYOfficialAwemeBundleIdentifier]) {
+        return NO;
+    }
+    NSString *suffix = [bundleIdentifier substringFromIndex:kDYYYOfficialAwemeBundleIdentifier.length];
+    NSCharacterSet *nonDigits = NSCharacterSet.decimalDigitCharacterSet.invertedSet;
+    return [suffix rangeOfCharacterFromSet:nonDigits].location == NSNotFound;
+}
+
++ (NSString *)realMainBundleIdentifier {
+    static NSString *identifier = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      NSString *plistPath = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Info.plist"];
+      NSDictionary *plist = plistPath.length > 0 ? [NSDictionary dictionaryWithContentsOfFile:plistPath] : nil;
+      NSString *bundleIdentifier = plist[@"CFBundleIdentifier"];
+      identifier = [bundleIdentifier isKindOfClass:NSString.class] ? [bundleIdentifier copy] : @"";
+    });
+    return identifier;
+}
+
++ (BOOL)isNumericAwemeCloneProcess {
+    return [self isNumericAwemeCloneBundleIdentifier:[self realMainBundleIdentifier]];
+}
+
++ (BOOL)shouldApplyEmojiBundleSpoof {
+    return !dyyyLoginBypassPostLoginNetworkRestore && [self isLoginBypassEnabled];
+}
+
++ (BOOL)shouldMaintainCloneSessionIdentity {
+    if (![self isNumericAwemeCloneProcess]) {
+        return NO;
+    }
+    return [self isLoginBypassEnabled] || dyyyLoginBypassPostLoginNetworkRestore;
+}
+
++ (BOOL)isTargetBundleIdentifier:(id)value {
+    if (![value isKindOfClass:NSString.class]) {
+        return NO;
+    }
+    NSString *bundleIdentifier = value;
+    for (NSString *officialIdentifier in [self officialFamilyBundleIdentifiers]) {
+        if ([bundleIdentifier isEqualToString:officialIdentifier]) {
+            return YES;
+        }
+    }
+    return [self isNumericAwemeCloneBundleIdentifier:bundleIdentifier];
+}
+
++ (NSArray<NSString *> *)emojiSuffixes {
+    static NSArray<NSString *> *suffixes = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      suffixes = @[
+          @"\U0001F60A", @"\U0001F60E", @"\U0001F914", @"\U0001F609", @"\U0001F60B", @"\U0001F60D", @"\U0001F970",
+          @"\U0001F618", @"\U0001F617", @"\U0001F619", @"\U0001F61A", @"\U0001F642", @"\U0001F917", @"\U0001F929",
+          @"\U0001F928", @"\U0001F9D0", @"\U0001F913", @"\U0001F607", @"\U0001F973", @"\U0001F60C", @"\U0001F60F",
+          @"\U0001F612", @"\U0001F643"
+      ];
+    });
+    return suffixes;
+}
+
++ (BOOL)shouldApplyLoginNetworkCamouflage {
+    if ([self isNumericAwemeCloneProcess]) {
+        return [self shouldMaintainCloneSessionIdentity];
+    }
+    return [self shouldApplyEmojiBundleSpoof];
+}
+
++ (NSMutableDictionary<NSString *, NSString *> *)replacementCache {
+    static NSMutableDictionary<NSString *, NSString *> *cache = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      cache = [NSMutableDictionary dictionary];
+      [NSTimer scheduledTimerWithTimeInterval:60.0
+                                      repeats:YES
+                                        block:^(__unused NSTimer *timer) {
+                                          @synchronized(cache) {
+                                              [cache removeAllObjects];
+                                          }
+                                        }];
+    });
+    return cache;
+}
+
++ (NSString *)replacementBundleIdentifier:(NSString *)bundleIdentifier {
+    if (![bundleIdentifier isKindOfClass:NSString.class] || ![self isTargetBundleIdentifier:bundleIdentifier]) {
+        return bundleIdentifier;
+    }
+
+    // 分身在绕登录或登录会话内映射为精确官方包名，不加 emoji。
+    if ([self isNumericAwemeCloneBundleIdentifier:bundleIdentifier]) {
+        return [self shouldMaintainCloneSessionIdentity] ? kDYYYOfficialAwemeBundleIdentifier : bundleIdentifier;
+    }
+
+    if (![self shouldApplyEmojiBundleSpoof]) {
+        return bundleIdentifier;
+    }
+
+    NSMutableDictionary<NSString *, NSString *> *cache = [self replacementCache];
+    @synchronized(cache) {
+        NSString *cachedValue = cache[bundleIdentifier];
+        if (cachedValue.length > 0) {
+            return cachedValue;
+        }
+
+        NSArray<NSString *> *suffixes = [self emojiSuffixes];
+        if (suffixes.count == 0) {
+            return bundleIdentifier;
+        }
+
+        NSString *suffix = suffixes[arc4random_uniform((uint32_t)suffixes.count)];
+        NSString *replacement = [bundleIdentifier stringByAppendingString:suffix];
+        if (replacement.length > 0 && cache.count <= 99) {
+            cache[bundleIdentifier] = replacement;
+        }
+        return replacement.length > 0 ? replacement : bundleIdentifier;
+    }
+}
+
++ (NSString *)headerValueByReplacingBundleIdentifier:(NSString *)value field:(NSString *)field {
+    if (![value isKindOfClass:NSString.class] || ![field isKindOfClass:NSString.class]) {
+        return value;
+    }
+
+    NSString *lowercaseField = field.lowercaseString;
+    BOOL isBundleHeaderField = [lowercaseField isEqualToString:@"x-bundle-id"] || [lowercaseField isEqualToString:@"bundle-identifier"] ||
+                               [lowercaseField isEqualToString:@"app-bundle-id"] || [lowercaseField isEqualToString:@"x-app-bundle-id"];
+    if (!isBundleHeaderField || ![self isTargetBundleIdentifier:value]) {
+        return value;
+    }
+    return [self replacementBundleIdentifier:value];
+}
+
++ (NSDictionary *)headersByReplacingBundleIdentifiers:(NSDictionary *)headers {
+    if (![headers isKindOfClass:NSDictionary.class]) {
+        return headers;
+    }
+
+    NSMutableDictionary *mutableHeaders = [headers mutableCopy];
+    NSArray<NSString *> *headerKeys = @[ @"X-Bundle-ID", @"X-App-Bundle-ID", @"Bundle-Identifier", @"App-Bundle-ID" ];
+    for (NSString *headerKey in headerKeys) {
+        id value = mutableHeaders[headerKey];
+        if ([self isTargetBundleIdentifier:value]) {
+            mutableHeaders[headerKey] = [self replacementBundleIdentifier:value];
+        }
+
+        NSString *lowercaseKey = headerKey.lowercaseString;
+        id lowercaseValue = mutableHeaders[lowercaseKey];
+        if ([self isTargetBundleIdentifier:lowercaseValue]) {
+            mutableHeaders[lowercaseKey] = [self replacementBundleIdentifier:lowercaseValue];
+        }
+    }
+    return mutableHeaders;
+}
+
++ (NSString *)stringByReplacingTargetBundleIdentifiers:(NSString *)value {
+    if (![value isKindOfClass:NSString.class] || value.length == 0) {
+        return value;
+    }
+
+    NSString *updatedString = value;
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    if ([self shouldApplyEmojiBundleSpoof]) {
+        NSArray<NSString *> *officialIdentifiers = [self officialFamilyBundleIdentifiers];
+        if (officialIdentifiers.count > 0) {
+            [candidates addObjectsFromArray:officialIdentifiers];
+        }
+    }
+    if ([self shouldMaintainCloneSessionIdentity]) {
+        static NSRegularExpression *cloneRegex = nil;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+          cloneRegex = [NSRegularExpression regularExpressionWithPattern:@"com\\.ss\\.iphone\\.ugc\\.Aweme\\d{4}"
+                                                                 options:0
+                                                                   error:nil];
+        });
+        NSArray<NSTextCheckingResult *> *cloneMatches =
+            [cloneRegex matchesInString:value options:0 range:NSMakeRange(0, value.length)];
+        for (NSTextCheckingResult *match in cloneMatches) {
+            NSString *cloneIdentifier = [value substringWithRange:match.range];
+            if (cloneIdentifier.length > 0 && ![candidates containsObject:cloneIdentifier]) {
+                [candidates addObject:cloneIdentifier];
+            }
+        }
+    }
+
+    // 先替换更长的 clone / lite / beta，避免 `Aweme` 前缀把 `Aweme3760` 截断替换坏。
+    [candidates sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+      if (left.length == right.length) {
+          return [right compare:left];
+      }
+      return left.length < right.length ? NSOrderedDescending : NSOrderedAscending;
+    }];
+
+    for (NSString *candidate in candidates) {
+        if (![updatedString containsString:candidate]) {
+            continue;
+        }
+        updatedString = [updatedString stringByReplacingOccurrencesOfString:candidate
+                                                                 withString:[self replacementBundleIdentifier:candidate]];
+    }
+    return updatedString;
+}
+
++ (NSURL *)URLByReplacingTargetBundleIdentifiers:(NSURL *)url {
+    if (![url isKindOfClass:NSURL.class]) {
+        return url;
+    }
+
+    NSString *absoluteString = url.absoluteString;
+    if (absoluteString.length == 0) {
+        return url;
+    }
+
+    NSString *updatedString = [self stringByReplacingTargetBundleIdentifiers:absoluteString];
+    if ([updatedString isEqualToString:absoluteString]) {
+        return url;
+    }
+    return [NSURL URLWithString:updatedString] ?: url;
 }
 
 + (BOOL)isLoginBypassEnabled {
@@ -278,16 +528,12 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
     }
 }
 
-+ (void)markDisablePipelineFinishedWithUserID:(nullable NSString *)userID {
++ (void)markDisablePipelineFinished {
     dyyyLoginBypassDisableInFlight = NO;
     dyyyLoginBypassLastHandledAt = CFAbsoluteTimeGetCurrent();
-    if (userID.length > 0) {
-        dyyyLoginBypassLastHandledUserID = [userID copy];
-    }
 }
 
-+ (BOOL)shouldStartDisablePipelineForUserID:(nullable NSString *)userID {
-    (void)userID;
++ (BOOL)shouldStartDisablePipeline {
     if (![self isLoginBypassEnabled]) {
         return NO;
     }
@@ -298,12 +544,14 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
     }
 
     dyyyLoginBypassDisableInFlight = YES;
+    dyyyLoginBypassPostLoginNetworkRestore = YES;
+    NSLog(@"[DYYY][绕登录] 登录成功回调：将关闭版本门控开关；分身继续维持指纹抑制与官方包名");
     return YES;
 }
 
 + (BOOL)disableIfOfficialLoginIsConfirmedWithUserID:(nullable NSString *)userID allowWeakMatch:(BOOL)allowWeakMatch {
     if (![self isLoginBypassEnabled]) {
-        [self markDisablePipelineFinishedWithUserID:userID];
+        [self markDisablePipelineFinished];
         return YES;
     }
 
@@ -325,7 +573,7 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
     [self persistLoginBypassEnabled:NO];
     NSLog(@"[DYYY][绕登录] 已通过官方账号服务确认登录(uid=%@)，自动关闭绕登录开关", resolvedUserID ?: @"unknown");
     [self showToastOnMainQueue:kDYYYLoginBypassDisabledToast];
-    [self markDisablePipelineFinishedWithUserID:resolvedUserID];
+    [self markDisablePipelineFinished];
     return YES;
 }
 
@@ -342,9 +590,10 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
     }
 
     if (isLastAttempt) {
+        dyyyLoginBypassPostLoginNetworkRestore = NO;
         NSLog(@"[DYYY][绕登录] 登录态校验失败，请手动关闭绕登录开关");
         [self showToastOnMainQueue:kDYYYLoginBypassManualCloseToast];
-        [self markDisablePipelineFinishedWithUserID:userID];
+        [self markDisablePipelineFinished];
         return;
     }
 
@@ -354,19 +603,56 @@ static CFAbsoluteTime dyyyLoginBypassLastHandledAt = 0;
     });
 }
 
++ (void)attemptReconcileWithRetryIndex:(NSUInteger)retryIndex {
+    static NSArray<NSNumber *> *retryDelays = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      retryDelays = @[ @0.2, @0.8, @2.0 ];
+    });
+
+    DYYYOfficialAccountLoginState loginState = [self officialAccountLoginState];
+    if (loginState == DYYYOfficialAccountLoginStateLoggedIn) {
+        dyyyLoginBypassPostLoginNetworkRestore = YES;
+        if ([self isLoginBypassEnabled]) {
+            [self persistLoginBypassEnabled:NO];
+            NSLog(@"[DYYY][绕登录] 启动对账：官方账号已登录，绕登录已关闭");
+            [self showToastOnMainQueue:kDYYYLoginBypassDisabledToast];
+        }
+        return;
+    }
+    if (loginState == DYYYOfficialAccountLoginStateLoggedOut || retryIndex >= retryDelays.count) {
+        if (loginState == DYYYOfficialAccountLoginStateLoggedOut) {
+            dyyyLoginBypassPostLoginNetworkRestore = NO;
+        }
+        return;
+    }
+
+    NSTimeInterval delay = retryDelays[retryIndex].doubleValue;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      [self attemptReconcileWithRetryIndex:retryIndex + 1];
+    });
+}
+
 + (void)handleOfficialLoginCompletionWithUserID:(nullable id)userIDOrAccount {
+    dyyyLoginBypassPostLoginNetworkRestore = YES;
+
     NSString *normalizedUserID = [self userIDFromLoginPayload:userIDOrAccount];
     if (normalizedUserID.length == 0) {
         normalizedUserID = [self currentOfficialUserID];
     }
 
-    if (![self shouldStartDisablePipelineForUserID:normalizedUserID]) {
+    if (![self shouldStartDisablePipeline]) {
         return;
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
       [self attemptDisableWithUserID:normalizedUserID retryIndex:0];
     });
+}
+
++ (void)handleOfficialLogout {
+    dyyyLoginBypassPostLoginNetworkRestore = NO;
+    NSLog(@"[DYYY][绕登录] 已退出登录，结束分身会话身份");
 }
 
 @end

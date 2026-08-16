@@ -11,6 +11,9 @@ is_direct_build_path() {
         DYYY.plist|control|layout/*)
             return 0
             ;;
+        Sources/*.h|Sources/*.m|Sources/*.mm|Sources/*.x|Sources/*.xm|Sources/*.c|Sources/*.cc|Sources/*.cpp|Sources/*.s|Sources/*.S)
+            return 0
+            ;;
     esac
 
     if [[ "$path" != */* ]]; then

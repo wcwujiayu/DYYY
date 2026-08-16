@@ -81,6 +81,9 @@ NS_ASSUME_NONNULL_BEGIN
 /** 抖音原生输入/交互控件的最终不透明显示色：BGInput2 按原生规则合成到 BGPanelTint，保持自定义输入框 alpha=1。 */
 + (UIColor *)douyinOpaqueInputBackgroundColor;
 
+/** 抖音原生过滤、关键词等交互控件的最终不透明显示色：BGCard2 合成到 BGPanelTint，避免半透明 token 叠在视频上穿底。 */
++ (UIColor *)douyinOpaqueInteractiveControlBackgroundColor;
+
 /** 抖音原生过滤、关键词等交互控件背景色。 */
 + (UIColor *)douyinInteractiveControlBackgroundColor;
 

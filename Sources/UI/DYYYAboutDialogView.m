@@ -1,6 +1,23 @@
 #import "DYYYAboutDialogView.h"
 #import "DYYYUtils.h"
 
+static void DYYYApplyLinkForAllOccurrences(NSMutableAttributedString *attributedString, NSString *needle, NSString *url) {
+    if (needle.length == 0 || url.length == 0) {
+        return;
+    }
+    NSString *text = attributedString.string;
+    NSRange searchRange = NSMakeRange(0, text.length);
+    while (searchRange.length > 0) {
+        NSRange found = [text rangeOfString:needle options:0 range:searchRange];
+        if (found.location == NSNotFound) {
+            break;
+        }
+        [attributedString addAttribute:NSLinkAttributeName value:url range:found];
+        NSUInteger nextLocation = NSMaxRange(found);
+        searchRange = NSMakeRange(nextLocation, text.length - nextLocation);
+    }
+}
+
 @implementation DYYYAboutDialogView
 
 - (instancetype)initWithTitle:(NSString *)title message:(NSString *)message {
@@ -16,17 +33,22 @@
         self.blurView.alpha = isDarkMode ? 0.3 : 0.2;
         [self addSubview:self.blurView];
 
-        // 计算文本高度，动态调整弹窗高度
+        // 按实际排版宽度计算正文高度，让关于页可以一次展示完
         UIFont *messageFont = [UIFont systemFontOfSize:15];
-        CGSize constraintSize = CGSizeMake(260, CGFLOAT_MAX);
+        UIEdgeInsets messageInsets = UIEdgeInsetsMake(0, 2, 8, 2);
+        CGFloat lineFragmentPadding = 5.0;
+        CGFloat messageWidth = 260;
+        CGFloat usableTextWidth = messageWidth - messageInsets.left - messageInsets.right - lineFragmentPadding * 2.0;
+        CGSize constraintSize = CGSizeMake(usableTextWidth, CGFLOAT_MAX);
         NSAttributedString *attributedMessage = [[NSAttributedString alloc] initWithString:message attributes:@{NSFontAttributeName : messageFont}];
-        CGRect textRect = [attributedMessage boundingRectWithSize:constraintSize options:NSStringDrawingUsesLineFragmentOrigin context:nil];
+        CGRect textRect = [attributedMessage boundingRectWithSize:constraintSize options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading context:nil];
 
-        CGFloat textHeight = textRect.size.height;
-        CGFloat maxTextHeight = 320;
+        CGFloat textHeight = ceil(CGRectGetHeight(textRect)) + messageInsets.top + messageInsets.bottom;
+        CGFloat screenHeight = UIScreen.mainScreen.bounds.size.height;
         CGFloat titleHeight = 44;
         CGFloat buttonHeight = 58;
         CGFloat buttonPadding = 28;
+        CGFloat maxTextHeight = MIN(520, MAX(360, screenHeight - 160 - titleHeight - buttonHeight - buttonPadding));
         CGFloat actualTextHeight = MIN(textHeight, maxTextHeight);
         CGFloat contentHeight = titleHeight + actualTextHeight + buttonHeight + buttonPadding;
         BOOL needsScrolling = textHeight > maxTextHeight;
@@ -57,10 +79,13 @@
         self.messageTextView.showsVerticalScrollIndicator = needsScrolling;
         self.messageTextView.dataDetectorTypes = UIDataDetectorTypeLink;
         self.messageTextView.selectable = YES;
+        self.messageTextView.textContainerInset = messageInsets;
+        self.messageTextView.textContainer.lineFragmentPadding = lineFragmentPadding;
 
-        // 创建段落样式并设置居中对齐
+        // 正文左对齐，便于阅读多行致谢与链接列表
         NSMutableParagraphStyle *paragraphStyle = [[NSMutableParagraphStyle alloc] init];
-        paragraphStyle.alignment = NSTextAlignmentCenter;
+        paragraphStyle.alignment = NSTextAlignmentLeft;
+        self.messageTextView.textAlignment = NSTextAlignmentLeft;
         NSMutableAttributedString *attributedString = [[NSMutableAttributedString alloc] initWithString:message];
         [attributedString addAttribute:NSParagraphStyleAttributeName value:paragraphStyle range:NSMakeRange(0, message.length)];
         [attributedString addAttribute:NSFontAttributeName
@@ -72,25 +97,12 @@
             isDarkMode ? [UIColor colorWithRed:180 / 255.0 green:180 / 255.0 blue:185 / 255.0 alpha:1.0] : [UIColor colorWithRed:124 / 255.0 green:124 / 255.0 blue:130 / 255.0 alpha:1.0];
         [attributedString addAttribute:NSForegroundColorAttributeName value:messageTextColor range:NSMakeRange(0, message.length)];
 
-        // 保持链接设置
-        NSRange telegramRange = [message rangeOfString:@"Telegram @vita_app"];
-        if (telegramRange.location != NSNotFound) {
-            [attributedString addAttribute:NSLinkAttributeName value:@"https://t.me/vita_app" range:telegramRange];
-        }
-
-        NSRange githubRange = [message rangeOfString:@"仓库地址 Wtrwx/DYYY"];
-        if (githubRange.location != NSNotFound) {
-            [attributedString addAttribute:NSLinkAttributeName value:@"https://github.com/Wtrwx/DYYY" range:githubRange];
-        }
-
-        NSRange huamiGithubRange = [message rangeOfString:@"开源地址 huami1314/DYYY"];
-        if (huamiGithubRange.location != NSNotFound) {
-            [attributedString addAttribute:NSLinkAttributeName value:@"https://github.com/huami1314/DYYY" range:huamiGithubRange];
-        }
-        NSRange huamiTGGroup = [message rangeOfString:@"Telegram @huamidev"];
-        if (huamiTGGroup.location != NSNotFound) {
-            [attributedString addAttribute:NSLinkAttributeName value:@"https://t.me/huamidev" range:huamiTGGroup];
-        }
+        DYYYApplyLinkForAllOccurrences(attributedString, @"@huamidev", @"https://t.me/huamidev");
+        DYYYApplyLinkForAllOccurrences(attributedString, @"@vita_app", @"https://t.me/vita_app");
+        DYYYApplyLinkForAllOccurrences(attributedString, @"@VexLabs1", @"https://t.me/VexLabs1");
+        DYYYApplyLinkForAllOccurrences(attributedString, @"huami1314/DYYY", @"https://github.com/huami1314/DYYY");
+        DYYYApplyLinkForAllOccurrences(attributedString, @"Wtrwx/DYYY", @"https://github.com/Wtrwx/DYYY");
+        DYYYApplyLinkForAllOccurrences(attributedString, @"VexCove/DYYY", @"https://github.com/VexCove/DYYY");
         self.messageTextView.attributedText = attributedString;
 
         // 设置链接颜色

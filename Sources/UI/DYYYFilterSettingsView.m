@@ -69,7 +69,7 @@ static const int kDYYYButtonsPerRow = 10;
         [self addSubview:self.blurView];
 
         // 创建内容视图 - 根据模式设置背景色
-        self.contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 300, 400)];
+        self.contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 300, self.propName.length > 0 ? 450.0 : 400.0)];
         CGFloat screenHeight = UIScreen.mainScreen.bounds.size.height;
         self.contentView.center = CGPointMake(self.frame.size.width / 2, screenHeight / 3);
         self.contentView.backgroundColor = [DYYYUtils douyinPanelBackgroundColor];
@@ -101,14 +101,14 @@ static const int kDYYYButtonsPerRow = 10;
         self.selectionPreviewLabel.textAlignment = NSTextAlignmentCenter;
         self.selectionPreviewLabel.numberOfLines = 2;
         self.selectionPreviewLabel.font = [UIFont systemFontOfSize:16];
-        self.selectionPreviewLabel.backgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+        self.selectionPreviewLabel.backgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
         self.selectionPreviewLabel.layer.cornerRadius = 8;
         self.selectionPreviewLabel.layer.masksToBounds = YES;
         [self.contentView addSubview:self.selectionPreviewLabel];
 
         // 字符滚动视图 - 根据模式设置背景色
         self.charactersScrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(20, 114, 260, 220)];
-        self.charactersScrollView.backgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+        self.charactersScrollView.backgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
         self.charactersScrollView.layer.cornerRadius = 8;
         self.charactersScrollView.bounces = YES;
         self.charactersScrollView.showsVerticalScrollIndicator = YES;
@@ -123,7 +123,7 @@ static const int kDYYYButtonsPerRow = 10;
         if (self.propName.length > 0) {
             self.propFilterButton = [UIButton buttonWithType:UIButtonTypeSystem];
             self.propFilterButton.frame = CGRectMake(20, separatorY, 260, 40);
-            self.propFilterButton.backgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+            self.propFilterButton.backgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
             self.propFilterButton.layer.cornerRadius = 8;
             [self.propFilterButton addTarget:self action:@selector(propFilterTapped) forControlEvents:UIControlEventTouchUpInside];
             [self.contentView addSubview:self.propFilterButton];
@@ -167,9 +167,8 @@ static const int kDYYYButtonsPerRow = 10;
         [self.confirmButton addTarget:self action:@selector(confirmTapped) forControlEvents:UIControlEventTouchUpInside];
         [buttonContainer addSubview:self.confirmButton];
 
-        // 更新内容视图位置
         CGRect frame = self.contentView.frame;
-        frame.size.height = buttonContainer.frame.origin.y + buttonContainer.frame.size.height - 80;
+        frame.size.height = CGRectGetMaxY(buttonContainer.frame);
         self.contentView.frame = frame;
         self.contentView.center = CGPointMake(self.frame.size.width / 2, screenHeight / 2);
         self.originalFrame = self.contentView.frame;
@@ -187,7 +186,7 @@ static const int kDYYYButtonsPerRow = 10;
     const CGFloat margin = kDYYYButtonMargin;
     const int buttonsPerRow = kDYYYButtonsPerRow;
 
-    UIColor *buttonBackgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+    UIColor *buttonBackgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
     UIColor *buttonTextColor =
         DYYYColor([UIColor colorWithRed:230 / 255.0 green:230 / 255.0 blue:235 / 255.0 alpha:1.0], [UIColor colorWithRed:45 / 255.0 green:47 / 255.0 blue:56 / 255.0 alpha:1.0], self.darkMode);
     UIColor *buttonBorderColor = [DYYYUtils douyinInteractiveSeparatorColor];
@@ -345,7 +344,7 @@ static const int kDYYYButtonsPerRow = 10;
     self.selectedText = [NSMutableString string];
     self.selectedRange = NSMakeRange(NSNotFound, 0);
 
-    UIColor *buttonBackgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+    UIColor *buttonBackgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
 
     for (UIButton *button in self.characterButtons) {
         button.backgroundColor = buttonBackgroundColor;
@@ -358,7 +357,7 @@ static const int kDYYYButtonsPerRow = 10;
     NSInteger startIndex = MIN(startIdx, endIdx);
     NSInteger endIndex = MAX(startIdx, endIdx);
 
-    UIColor *buttonBackgroundColor = [DYYYUtils douyinInteractiveControlBackgroundColor];
+    UIColor *buttonBackgroundColor = [DYYYUtils douyinOpaqueInteractiveControlBackgroundColor];
 
     NSRange newRange = NSMakeRange(startIndex, endIndex - startIndex + 1);
     NSRange oldRange = self.selectedRange.location == NSNotFound ? NSMakeRange(0, 0) : self.selectedRange;

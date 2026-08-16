@@ -11,7 +11,6 @@
 TARGET = iphone:clang:latest:14.0
 ARCHS = arm64 arm64e
 
-#export THEOS=/Users/huami/theos
 #export THEOS_PACKAGE_SCHEME=roothide
 
 # 本地默认 rootless；SCHEME=rootful / SCHEME=roothide 可切换
@@ -49,7 +48,6 @@ DYYY_FILES = DYYY.xm \
 	Sources/Features/DYYYFloatSpeedButton.m \
 	Sources/Settings/DYYYSettingsHelper.m \
 	Sources/Settings/DYYYPickerDelegates.m \
-	Sources/Media/DYYYBackupManager.m \
 	Sources/Settings/DYYYSettingViewController.m \
 	Sources/UI/DYYYKeyboardAvoidanceCoordinator.m \
 	Sources/Features/DYYYLivePreStreamLayoutCoordinator.m \
@@ -60,23 +58,37 @@ DYYY_FILES = DYYY.xm \
 	Sources/UI/DYYYAboutDialogView.m \
 	Sources/UI/DYYYGlassConfirmView.m \
 	Sources/UI/DYYYKeywordListView.m \
+	Sources/UI/DYYYMediaChooserSheet.m \
 	Sources/UI/DYYYFilterSettingsView.m \
 	Sources/UI/DYYYConfirmCloseView.m \
 	Sources/UI/DYYYToast.m \
 	Sources/Media/DYYYManager.m \
 	Sources/Core/DYYYUtils.m \
 	Sources/Features/DYYYLoginBypassManager.m \
+	Sources/Features/DYYYLoginRepairHooks.m \
 	Sources/Features/DYYYPrivacyRecordUploadGuard.m \
 	Sources/Core/CityManager.m \
 	Sources/Core/AWMSafeDispatchTimer.m \
 	Sources/Features/DYYYMiniProgramRewardBypass.m \
-	Sources/Features/DYYYHideMusicButtonHooks.m
+	Sources/Features/DYYYHideMusicButtonHooks.m \
+	Sources/Features/DYYYHideShareContentViewHooks.m \
+	Sources/Features/DYYYHideMessageAndMinePageHooks.m \
+	Sources/Features/DYYYHideCommentAIAnalysisHooks.m \
+	Sources/Features/DYYYHideTemplateCollectionHooks.m \
+	Sources/Features/DYYYSearchKeyboardVoiceHooks.m \
+	Sources/Features/DYYYHighFPSHooks.m \
+	Sources/Features/DYYYFPSOverlay.m \
+	Sources/Features/DYYYFeedTagHooks.m \
+	Sources/Features/DYYYExactInteractionCountHooks.m \
+	Sources/Hooking/DYYYRuntimeHookInstaller.m \
+	Sources/Hooking/DYYYHookManager.m
 DYYY_CFLAGS = -fobjc-arc -w \
 	-I$(THEOS_PROJECT_DIR)/Sources/Core \
 	-I$(THEOS_PROJECT_DIR)/Sources/Settings \
 	-I$(THEOS_PROJECT_DIR)/Sources/UI \
 	-I$(THEOS_PROJECT_DIR)/Sources/Media \
-	-I$(THEOS_PROJECT_DIR)/Sources/Features
+	-I$(THEOS_PROJECT_DIR)/Sources/Features \
+	-I$(THEOS_PROJECT_DIR)/Sources/Hooking
 DYYY_LDFLAGS = -weak_framework AVFAudio -lcompression
 DYYY_FRAMEWORKS = UIKit Foundation AVFoundation CoreAudio UniformTypeIdentifiers
 CXXFLAGS += -std=c++11
@@ -89,28 +101,10 @@ export LOGOS_DEFAULT_GENERATOR=internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-ifeq ($(shell whoami),huami)
-    THEOS_DEVICE_IP = 192.168.31.227
-else
-    THEOS_DEVICE_IP = 192.168.15.201
-endif
-THEOS_DEVICE_PORT = 22
-
 # 清理 packages 目录
 clean::
 	@echo -e "\033[31m==>\033[0m Cleaning packages…"
 	@rm -rf .theos packages
 
-# 编译并自动安装
 after-package::
 	@echo -e "\033[32m==>\033[0m Packaging complete."
-	@if [ "$(GITHUB_ACTIONS)" != "true" ] && [ "$(INSTALL)" = "1" ]; then \
-        DEB_FILE=$$(ls -t packages/*.deb | head -1); \
-        PACKAGE_NAME=$$(basename "$$DEB_FILE" | cut -d'_' -f1); \
-        echo -e "\033[34m==>\033[0m Installing $$PACKAGE_NAME to device…"; \
-        ssh root@$(THEOS_DEVICE_IP) "rm -rf /tmp/$${PACKAGE_NAME}.deb"; \
-        scp "$$DEB_FILE" root@$(THEOS_DEVICE_IP):/tmp/$${PACKAGE_NAME}.deb; \
-        ssh root@$(THEOS_DEVICE_IP) "dpkg -i --force-overwrite /tmp/$${PACKAGE_NAME}.deb && rm -f /tmp/$${PACKAGE_NAME}.deb"; \
-	else \
-        echo -e "\033[33m==>\033[0m Skipping installation (GitHub Actions environment or INSTALL!=1)"; \
-	fi

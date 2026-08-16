@@ -21,6 +21,19 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
     return self;
 }
 
+- (void)performOnSynchronizationQueue:(dispatch_block_t)block {
+    if (!block || !self.synchronizationQueue) {
+        return;
+    }
+
+    if (dispatch_get_specific(kAWMSafeDispatchTimerSpecificKey) == (__bridge void *)self) {
+        block();
+        return;
+    }
+
+    dispatch_async(self.synchronizationQueue, block);
+}
+
 - (void)startWithInterval:(NSTimeInterval)interval
                    leeway:(NSTimeInterval)leeway
                     queue:(dispatch_queue_t)queue
@@ -34,7 +47,7 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
     uint64_t tolerance = leeway > 0 ? (uint64_t)(leeway * NSEC_PER_SEC) : (uint64_t)(0.1 * NSEC_PER_SEC);
 
     __weak __typeof(self) weakSelf = self;
-    dispatch_async(self.synchronizationQueue, ^{
+    [self performOnSynchronizationQueue:^{
       __strong __typeof(weakSelf) strongSelf = weakSelf;
       if (!strongSelf) {
           return;
@@ -72,17 +85,24 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
       }
 
       strongSelf.running = YES;
-    });
+    }];
 }
 
 - (void)cancel {
-    dispatch_async(self.synchronizationQueue, ^{
-      [self cancelLocked];
-    });
+    __weak __typeof(self) weakSelf = self;
+    [self performOnSynchronizationQueue:^{
+      __strong __typeof(weakSelf) strongSelf = weakSelf;
+      if (!strongSelf) {
+          return;
+      }
+      [strongSelf cancelLocked];
+    }];
 }
 
 - (void)cancelLocked {
     if (!self.internalTimer) {
+        self.internalHandler = nil;
+        self.running = NO;
         return;
     }
 
@@ -105,18 +125,57 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
         return _running;
     }
 
+    dispatch_queue_t queue = self.synchronizationQueue;
+    if (!queue) {
+        return NO;
+    }
+
     __block BOOL runningState = NO;
-    dispatch_sync(self.synchronizationQueue, ^{
-      runningState = _running;
+    dispatch_sync(queue, ^{
+      runningState = self->_running;
     });
     return runningState;
 }
 
 - (void)dealloc {
-    if (self.synchronizationQueue) {
-        dispatch_queue_set_specific(self.synchronizationQueue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+    dispatch_queue_t queue = _synchronizationQueue;
+    if (!queue) {
+        return;
     }
-    [self cancel];
+
+    // Detect on-queue dealloc before clearing the non-owning specific pointer.
+    // Last release can happen while draining synchronizationQueue; dispatch_sync
+    // to the same queue would deadlock.
+    BOOL onSynchronizationQueue =
+        (dispatch_get_specific(kAWMSafeDispatchTimerSpecificKey) == (__bridge void *)self);
+    dispatch_queue_set_specific(queue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+
+    // Never dispatch_async([self cancel]) from dealloc: the async block would
+    // message a dangling object after destruction (seen as EXC_BAD_ACCESS/PAC
+    // on com.dyyy.safeDispatchTimer). Tear down synchronously with raw ivars.
+    __block dispatch_source_t timer = nil;
+    __block BOOL resumed = NO;
+    void (^tearDownLocked)(void) = ^{
+      timer = self->_internalTimer;
+      resumed = self->_resumed;
+      self->_internalHandler = nil;
+      self->_internalTimer = nil;
+      self->_resumed = NO;
+      self->_running = NO;
+      if (timer) {
+          dispatch_source_set_event_handler(timer, ^{});
+      }
+    };
+
+    if (onSynchronizationQueue) {
+        tearDownLocked();
+    } else {
+        dispatch_sync(queue, tearDownLocked);
+    }
+
+    if (timer && resumed) {
+        dispatch_source_cancel(timer);
+    }
 }
 
 @end

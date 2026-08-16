@@ -59,6 +59,17 @@ raw_commit_type() {
 canonical_commit_type() {
     local subject=$1
     local raw_type
+    local content
+
+    # 提交类型用于分组，但“回滚”是对发布净差异有决定性的语义：即使历史提交
+    # 误写为 fix: 回滚…，也必须进入回滚处理，才能与同一发布范围内的原提交配对移除。
+    content=$(strip_commit_type_prefix "$subject")
+    case "$content" in
+        Revert\ *|revert:*|revert：*|回滚*|撤销*)
+            printf 'revert'
+            return
+            ;;
+    esac
 
     raw_type=$(raw_commit_type "$subject")
     case "$raw_type" in
@@ -213,6 +224,9 @@ feature_group_for_subject() {
     local subject=$1
 
     case "$subject" in
+        *评论额外标签隐藏*|*合集与短剧入口隐藏*|*收敛评论与合集隐藏*|*搜索键盘语音入口隐藏*)
+            printf '页面入口隐藏 Runtime Hook'
+            ;;
         *快捷倍速*|*倍速侧边*|*倍速锁定*|*倍速长按*|*倍速设置*|*倍速悬浮*|*倍速按钮*)
             printf '快捷倍速'
             ;;
@@ -264,23 +278,24 @@ summarize_commit_title() {
         feat)
             content=$(printf '%s' "$content" | sed -E 's/^(新增|增加|添加|支持|引入|实现|优化)[[:space:]:：]*//')
             content=$(trim_text "$content")
-            printf '新增%s' "${content:-插件功能}"
+            printf '%s' "${content:-插件功能}"
             ;;
         fix)
-            content=$(printf '%s' "$content" | sed -E 's/^(兜底修复|修复|解决|恢复|纠正|修改|调整)[[:space:]:：]*//; s/的问题$//')
+            content=$(printf '%s' "$content" | sed -E 's/^(兜底修复|修复|解决|恢复|纠正|修正|修改|调整|优化|完善)[[:space:]:：]*//; s/的问题$//')
             content=$(printf '%s' "$content" | sed -E 's/不生效/生效异常/g; s/失效/异常/g; s/无法/不能/g')
             content=$(trim_text "$content")
-            printf '修正%s' "${content:-已知问题}"
+            printf '%s' "${content:-已知问题}"
             ;;
         perf)
             content=$(printf '%s' "$content" | sed -E 's/^(性能优化|优化|提升|改善|提速|加速)[[:space:]:：]*//')
             content=$(trim_text "$content")
-            printf '优化%s' "${content:-运行性能}"
+            printf '%s' "${content:-运行性能}"
             ;;
         refactor)
             content=$(printf '%s' "$content" | sed -E 's/^(重构|简化|清理|整理|调整|优化|完善)[[:space:]:：]*//')
+            content=$(printf '%s' "$content" | sed -E 's/^将[[:space:]]*//')
             content=$(trim_text "$content")
-            printf '整理%s' "${content:-代码结构}"
+            printf '%s' "${content:-代码结构}"
             ;;
         docs)
             content=$(printf '%s' "$content" | sed -E 's/^(文档|更新|修改|补充)[[:space:]:：]*//')
@@ -295,14 +310,57 @@ summarize_commit_title() {
         revert)
             content=$(printf '%s' "$content" | sed -E 's/^(回滚|撤销|取消)[[:space:]:：]*//')
             content=$(trim_text "$content")
-            printf '回滚%s' "${content:-上一项变更}"
+            printf '%s' "${content:-上一项变更}"
             ;;
         *)
             content=$(printf '%s' "$content" | sed -E 's/^(杂项|其他|更新|调整|同步)[[:space:]:：]*//')
             content=$(trim_text "$content")
-            printf '调整%s' "${content:-构建与维护项}"
+            printf '%s' "${content:-构建与维护项}"
             ;;
     esac
+}
+
+polish_release_title() {
+    local subject=$1
+    local commit_type=$2
+    local summary_title=$3
+    local content
+    local target
+
+    content=$(strip_commit_type_prefix "$subject")
+
+    case "$commit_type" in
+        feat)
+            if [[ "$content" == 优化* && "$summary_title" != *改进 ]]; then
+                summary_title+="改进"
+            fi
+            if [[ "$summary_title" == 隐藏*入口 ]]; then
+                target=${summary_title#隐藏}
+                target=${target%入口}
+                summary_title="${target}隐藏支持"
+            fi
+            summary_title=$(printf '%s' "$summary_title" |
+                sed -E 's/^消息页与我的页三项隐藏开关$/消息页与我的页新增三项隐藏选项/')
+            ;;
+        fix)
+            if [[ "$content" == 优化* && "$summary_title" != *改进 ]]; then
+                summary_title+="体验改进"
+            elif [[ "$summary_title" == 适配* ]]; then
+                summary_title="${summary_title#适配}适配"
+            fi
+            summary_title=$(printf '%s' "$summary_title" |
+                sed -E 's/^图集与富内容倍速控制适配$/图集与富内容场景的倍速控制适配/; s/^快捷倍速交互与图集播放体验改进$/快捷倍速与图集播放体验改进/')
+            ;;
+        refactor)
+            summary_title=$(printf '%s' "$summary_title" |
+                sed -E 's/^迁移(.+)[[:space:]]+Runtime Hook$/\1改用 Runtime Hook/; s/^迁移(.+)[[:space:]]+Hook$/\1改用 Runtime Hook/; s/(.+)迁移为 Runtime Hook$/\1改用 Runtime Hook/; s/^收敛(.+)职责$/\1职责统一/; s/^手写源码按职责迁入 Sources 目录$/手写源码按职责归入 Sources 目录/')
+            ;;
+    esac
+
+    summary_title=$(printf '%s' "$summary_title" |
+        sed -E 's/^移除未使用的 Resources 图标资源$/移除未使用的图标资源/')
+
+    printf '%s' "$summary_title"
 }
 
 normalize_group_text() {
@@ -431,7 +489,7 @@ normalize_revert_match_text() {
 
     value=$(strip_commit_type_prefix "$value")
     value=$(printf '%s' "$value" |
-        sed -E 's/^(新增|增加|添加|支持|引入|实现|修复|解决|恢复|纠正|修改|调整|优化|完善|重构|简化|清理|整理)[[:space:]:：]*//')
+        sed -E 's/^(新增|增加|添加|支持|引入|实现|修复|解决|恢复|纠正|修改|调整|优化|完善|重构|简化|清理|整理|将)[[:space:]:：]*//; s/(迁移为|迁移到|改为)[[:space:]]*//g')
     value=$(printf '%s' "$value" |
         sed -E 's/(的问题|问题|逻辑|优化|功能|选项|状态|改动|变更|同步|显示|隐藏|判定|异常|失效|不能|闪退)$//')
     value=$(printf '%s' "$value" |
@@ -493,7 +551,7 @@ detect_same_range_reverts() {
             continue
         fi
 
-        target_subject=$(reverted_subject_from_title "$subject")
+        target_subject=$(reverted_subject_from_title "$(strip_commit_type_prefix "$subject")")
         target_key=$(normalize_revert_match_text "$target_subject")
         if [[ -z "$target_key" || "${#target_key}" -lt 6 ]]; then
             continue
@@ -554,6 +612,10 @@ aggregate_group_title() {
             printf '调整 Deb 构建配置'
             return
             ;;
+        页面入口隐藏\ Runtime\ Hook)
+            printf '页面入口隐藏逻辑统一改用 Runtime Hook'
+            return
+            ;;
     esac
 
     case "$commit_type" in
@@ -584,6 +646,218 @@ aggregate_group_title() {
     esac
 }
 
+aggregate_group_release_note() {
+    local group_key=$1
+    local title_count=$2
+
+    if (( title_count <= 1 )); then
+        return
+    fi
+
+    case "$group_key" in
+        feature:页面入口隐藏\ Runtime\ Hook)
+            printf '评论额外标签、合集与短剧入口、搜索键盘语音入口的隐藏逻辑已完成整合，相关 Hook 的职责边界进一步统一。'
+            ;;
+    esac
+}
+
+release_note_for_commit() {
+    local hash=$1
+    local commit_type=$2
+    local allow_fallback=false
+
+    case "$commit_type" in
+        feat|fix|perf)
+            allow_fallback=true
+            ;;
+    esac
+
+    git show -s --format=%b "$hash" |
+        awk -v allow_fallback="$allow_fallback" '
+            function join_text(current, value, separator) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value == "") {
+                    return current
+                }
+                separator = ""
+                if (current != "" &&
+                    current !~ /[，。；：！？、]$/ &&
+                    value !~ /^[，。；：！？、]/) {
+                    separator = " "
+                }
+                return current separator value
+            }
+
+            /^(Release-Note|发布说明):[[:space:]]*/ {
+                capturing = 1
+                value = $0
+                sub(/^(Release-Note|发布说明):[[:space:]]*/, "", value)
+                note = join_text(note, value)
+                has_note = (note != "")
+                next
+            }
+
+            capturing {
+                if ($0 ~ /^[A-Za-z][A-Za-z0-9-]*:[[:space:]]*/ ||
+                    $0 ~ /^发布说明:[[:space:]]*/) {
+                    exit
+                }
+                if ($0 ~ /^[[:space:]]*$/) {
+                    if (has_note) {
+                        exit
+                    }
+                    next
+                }
+                note = join_text(note, $0)
+                has_note = (note != "")
+                next
+            }
+
+            allow_fallback == "true" && !fallback_done {
+                if ($0 ~ /^[[:space:]]*$/) {
+                    if (has_fallback) {
+                        fallback_done = 1
+                    }
+                    next
+                }
+                if ($0 ~ /^[A-Za-z][A-Za-z0-9-]*:[[:space:]]*/ ||
+                    $0 ~ /^This reverts commit [0-9a-fA-F]+\.$/) {
+                    fallback_done = 1
+                    next
+                }
+                fallback = join_text(fallback, $0)
+                has_fallback = (fallback != "")
+            }
+
+            END {
+                if (note != "" && note != "skip" && note != "none") {
+                    print note
+                } else if (allow_fallback == "true" && fallback != "") {
+                    print fallback
+                }
+            }
+        ' |
+        sed -E 's/^为(.+)提供独立 Runtime Hook 与设置项，修复(.+)误挂 [^[:space:]]+ 导致无法隐藏的问题。$/新增\1的独立隐藏选项，并修复\2在部分场景无法隐藏的问题。/'
+}
+
+derived_release_note_for_commit() {
+    local hash=$1
+    local subject
+    local content
+
+    subject=$(git show -s --format=%s "$hash")
+    content=$(strip_commit_type_prefix "$subject")
+
+    # 优先从实际差异识别用户可感知的结果，不依赖某一条固定提交标题。
+    if git show --format= --unified=0 "$hash" | grep -F 'AWEGeneralSearchAIBallButton' >/dev/null &&
+       git show --format= --unified=0 "$hash" | grep -F 'AWEGeneralSearchAIModeButton' >/dev/null &&
+       git show --format= --unified=0 "$hash" | grep -F 'DYYYHideKeyboardAI' >/dev/null; then
+        printf '开启“隐藏键盘 AI”后，综合搜索结果页右下角的“继续追问”等 AI 浮钮也会一并隐藏，并避免入口先出现再消失。'
+        return
+    fi
+
+    if git show --format= --unified=0 "$hash" | grep -F 'DYYYApplySpeedToVisibleAFDSlidesViews' >/dev/null &&
+       git show --format= --unified=0 "$hash" | grep -F 'allowCachedController' >/dev/null &&
+       git show --format= --unified=0 "$hash" | grep -F 'setAlbumFastPlay:useFastRate' >/dev/null; then
+        printf '修复图文场景可能沿用上一个视频倍率状态的问题；切换倍率或恢复 1.0 倍速时，现在会正确作用于当前图文内容，并避免误触发长按快进转场。'
+        return
+    fi
+
+    case "$content" in
+        优化悬浮倍速与清屏按钮交互)
+            if git show --format= --unified=0 "$hash" | grep -F 'DYYYAutoHideSpeedButtonTime' >/dev/null &&
+               git show --format= --unified=0 "$hash" | grep -F 'DYYYClearButtonEdge' >/dev/null &&
+               git show --format= --unified=0 "$hash" | grep -F 'DYYYSpeedButtonEdge' >/dev/null; then
+                printf '悬浮倍速与清屏按钮现在支持沿屏幕四边拖动停靠并记忆位置；倍速按钮新增尺寸和自动隐藏时长设置，清屏切换后会按设置恢复显示状态。'
+            fi
+            ;;
+        适配图集与富内容倍速控制)
+            if git show --format= --unified=0 "$hash" | grep -F 'DYYYApplyImageAlbumPlaybackSpeed' >/dev/null &&
+               git show --format= --unified=0 "$hash" | grep -F 'AFDSlidesView' >/dev/null; then
+                printf '倍速控制扩展至图集与富内容场景，切换倍速时会同步更新图集播放计时与宿主速度状态。'
+            fi
+            ;;
+        优化快捷倍速交互与图集播放)
+            if git show --format= --unified=0 "$hash" | grep -F 'fast-play 状态会触发其长按快进转场' >/dev/null &&
+               git show --format= --unified=0 "$hash" | grep -F 'dyyy_playTapFeedback' >/dev/null; then
+                printf '调整倍速按钮的点击反馈，并避免图集单击切换倍速时误触发长按快进转场造成内容拉伸、停顿和回弹。'
+            fi
+            ;;
+    esac
+}
+
+release_note_is_suppressed() {
+    local hash=$1
+
+    git show -s --format=%b "$hash" |
+        awk '
+            /^(Release-Note|发布说明):[[:space:]]*(skip|none)[[:space:]]*$/ {
+                found = 1
+                exit
+            }
+            END { exit found ? 0 : 1 }
+        '
+}
+
+fallback_release_note_for_commit() {
+    local hash=$1
+    local commit_type=$2
+    local summary_title=$3
+    local subject
+    local content
+    local target
+
+    subject=$(git show -s --format=%s "$hash")
+    content=$(strip_commit_type_prefix "$subject")
+
+    case "$commit_type" in
+        feat)
+            case "$content" in
+                隐藏*)
+                    target=${content#隐藏}
+                    printf '开启对应隐藏选项后，%s将不再显示。' "$target"
+                    ;;
+                新增*|增加*|添加*|支持*|引入*|实现*)
+                    target=$(printf '%s' "$content" |
+                        sed -E 's/^(新增|增加|添加|支持|引入|实现)[[:space:]:：]*//')
+                    printf '现在可以使用%s。' "${target:-$summary_title}"
+                    ;;
+                *)
+                    printf '新增“%s”相关能力，可在对应使用场景中直接体验。' "$summary_title"
+                    ;;
+            esac
+            ;;
+        fix)
+            case "$content" in
+                修正*状态|修复*状态)
+                    target=$(printf '%s' "$content" |
+                        sed -E 's/^(修正|修复)[[:space:]:：]*//; s/状态$//')
+                    printf '修复%s状态未按预期更新的问题，相关操作现在会正确作用于当前内容。' "${target:-$summary_title}"
+                    ;;
+                *)
+                    printf '修复“%s”相关异常，受影响的操作现在会按预期工作。' "$summary_title"
+                    ;;
+            esac
+            ;;
+        perf)
+            printf '优化“%s”的使用表现，相关操作现在更加流畅稳定。' "$summary_title"
+            ;;
+    esac
+}
+
+warn_release_note_fallback() {
+    local hash=$1
+    local subject=$2
+    local short_hash=${hash:0:8}
+    local message="${short_hash} ${subject} 未提供 Release-Note，已使用通用用户说明；建议在重要提交正文中补充 Release-Note:。"
+
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        printf '::warning title=Release note fallback::%s\n' "$message" >&2
+    else
+        printf 'warning: %s\n' "$message" >&2
+    fi
+}
+
 append_grouped_entries_for_type() {
     local commit_type=$1
     local section_file=$2
@@ -595,11 +869,15 @@ append_grouped_entries_for_type() {
     local hash_links
     local summary_title
     local titles_file
+    local notes_file
+    local release_note
+    local group_release_note
 
     while IFS= read -r group_key; do
         [[ -n "$group_key" ]] || continue
 
         titles_file=$(mktemp)
+        notes_file=$(mktemp)
         hash_links=""
         while IFS=$'\t' read -r title hash; do
             [[ -n "$hash" ]] || continue
@@ -612,6 +890,21 @@ append_grouped_entries_for_type() {
                 hash_links+=", "
             fi
             hash_links+="[\`${short_hash}\`](${server_url}/${repository}/commit/${hash})"
+
+            release_note=$(release_note_for_commit "$hash" "$commit_type")
+            if [[ -z "$release_note" ]] && ! release_note_is_suppressed "$hash"; then
+                release_note=$(derived_release_note_for_commit "$hash")
+            fi
+            if [[ -z "$release_note" ]] && ! release_note_is_suppressed "$hash"; then
+                release_note=$(fallback_release_note_for_commit "$hash" "$commit_type" "$title")
+                if [[ -n "$release_note" ]]; then
+                    warn_release_note_fallback "$hash" "$(git show -s --format=%s "$hash")"
+                fi
+            fi
+            if [[ -n "$release_note" ]] &&
+               ! grep -Fxq "$release_note" "$notes_file"; then
+                printf '%s\n' "$release_note" >> "$notes_file"
+            fi
         done < <(
             awk -F $'\t' -v type="$commit_type" -v key="$group_key" '
                 $1 == type && $2 == key { print $3 "\t" $4 }
@@ -620,11 +913,24 @@ append_grouped_entries_for_type() {
 
         title_count=$(awk 'NF { count++ } END { print count + 0 }' "$titles_file")
         summary_title=$(aggregate_group_title "$commit_type" "$group_key" "$titles_file" "$title_count")
+        group_release_note=$(aggregate_group_release_note "$group_key" "$title_count")
+        if [[ -n "$group_release_note" ]] &&
+           ! grep -Fxq "$group_release_note" "$notes_file"; then
+            printf '%s\n' "$group_release_note" >> "$notes_file"
+        fi
         rm -f "$titles_file"
 
         if [[ -n "$summary_title" && -n "$hash_links" ]]; then
-            printf -- '- `%s` **%s** (%s)\n' "$commit_type" "$summary_title" "$hash_links" >> "$section_file"
+            # 类型已由 Release 分区表达，条目只保留用户能理解的变更主题；提交链接
+            # 作为可追溯证据，而非把 feat/fix/refactor 这类开发语法暴露给用户。
+            printf -- '- **%s**（%s）\n' "$summary_title" "$hash_links" >> "$section_file"
+            while IFS= read -r release_note; do
+                [[ -n "$release_note" ]] || continue
+                printf '\n  %s\n' "$release_note" >> "$section_file"
+            done < "$notes_file"
+            printf '\n' >> "$section_file"
         fi
+        rm -f "$notes_file"
     done < <(
         awk -F $'\t' -v type="$commit_type" '
             $1 == type && !seen[$2]++ { print $2 }
@@ -642,10 +948,12 @@ latest_release_tag() {
     local latest_tag
 
     if ! command -v gh >/dev/null 2>&1 ||
-       [[ -z "${GH_TOKEN:-}" || -z "$repository" ]]; then
+       [[ -z "$repository" ]]; then
         return
     fi
 
+    # GitHub 公共仓库允许无 token 查询 Release。不能因为本地未注入 GH_TOKEN
+    # 就直接退回可能过期的本地 tag，否则本地预览会把已发布提交重新列入下一版。
     latest_tag=$(gh api "repos/${repository}/releases/latest" \
         --jq '.tag_name // empty' 2>/dev/null || true)
     printf '%s' "$latest_tag"
@@ -709,7 +1017,7 @@ record_contributor_for_commit() {
     fi
 }
 
-previous_tag=$(latest_release_tag)
+previous_tag=${RELEASE_PREVIOUS_TAG:-$(latest_release_tag)}
 if [[ -n "$previous_tag" ]] &&
    ! ensure_release_tag_available "$previous_tag"; then
     previous_tag=""
@@ -761,6 +1069,7 @@ while IFS=$'\t' read -r hash subject commit_type; do
 
     relevant_count=$((relevant_count + 1))
     summary_title=$(summarize_commit_title "$hash" "$subject" "$commit_type")
+    summary_title=$(polish_release_title "$subject" "$commit_type" "$summary_title")
     group_key=$(summary_group_key "$hash" "$subject" "$commit_type" "$summary_title")
     summary_title=$(printf '%s' "$summary_title" | tr '\t' ' ')
     printf '%s\t%s\t%s\t%s\n' "$commit_type" "$group_key" "$summary_title" "$hash" >> "$groups_file"
@@ -790,14 +1099,32 @@ append_section() {
     fi
 }
 
-append_section "新增功能" "$feat_file"
-append_section "修复问题" "$fix_file"
-append_section "性能优化" "$perf_file"
-append_section "代码重构" "$refactor_file"
-append_section "文档更新" "$docs_file"
-append_section "代码格式" "$style_file"
-append_section "杂项/其他" "$chore_file"
-append_section "回滚" "$revert_file"
+append_files_as_section() {
+    local title=$1
+    shift
+    local section_file
+    local has_entries=false
+
+    for section_file in "$@"; do
+        [[ -s "$section_file" ]] || continue
+        if [[ "$has_entries" == "false" ]]; then
+            if [[ "$release_section_written" == "true" ]]; then
+                printf '%s\n' '---' >> "$notes_file"
+            fi
+            printf '\n### %s\n\n' "$title" >> "$notes_file"
+            has_entries=true
+            release_section_written=true
+        fi
+        cat "$section_file" >> "$notes_file"
+    done
+}
+
+# 沿用用户指定的发布日志结构；PR 引用在 DYYY 中由对应 commit 链接替代。
+release_section_written=false
+append_files_as_section "新功能与体验改进" "$feat_file" "$perf_file"
+append_files_as_section "Bug 修复" "$fix_file"
+append_files_as_section "维护与发布流程" "$refactor_file" "$docs_file" "$style_file" "$chore_file"
+append_files_as_section "变更回滚" "$revert_file"
 
 contributor_count=$(awk 'NF { count++ } END { print count + 0 }' "$contributors_file")
 if (( contributor_count >= 2 )); then

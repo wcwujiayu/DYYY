@@ -15,22 +15,21 @@ on:
       - '*.cpp'
       - '*.s'
       - '*.S'
+      - 'Sources/**/*.h'
+      - 'Sources/**/*.m'
+      - 'Sources/**/*.mm'
+      - 'Sources/**/*.x'
+      - 'Sources/**/*.xm'
+      - 'Sources/**/*.c'
+      - 'Sources/**/*.cc'
+      - 'Sources/**/*.cpp'
+      - 'Sources/**/*.s'
+      - 'Sources/**/*.S'
       - 'DYYY.plist'
       - 'control'
       - 'Makefile'
       - 'layout/**'
   workflow_dispatch:
-    inputs:
-      scheme:
-        description: '打包方案（留空则全打）'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - rootful
-          - rootless
-          - roothide
 
 permissions:
   actions: read
@@ -46,6 +45,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Validate release automation
+        run: .github/scripts/test-release-notes.sh
 
       - name: Detect build-relevant changes
         id: relevance

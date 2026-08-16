@@ -1,1 +1,1 @@
-{ Filter = { Bundles = ( "com.ss.iphone.ugc.Aweme", "com.ss.iphone.ugc.aweme.lite" ); }; }
+{ Filter = { Bundles = ( "com.ss.iphone.ugc.Aweme", "com.ss.iphone.ugc.aweme.lite", "com.ss.iphone.ugc.Aweme3760", "com.ss.iphone.ugc.Aweme3800", "com.ss.iphone.ugc.Aweme3861", "com.ss.iphone.ugc.Aweme3890", "com.ss.iphone.ugc.Aweme3920", "com.ss.iphone.ugc.Aweme3950" ); }; }

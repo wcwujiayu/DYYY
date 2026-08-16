@@ -253,8 +253,64 @@ static char kDYYYLivePreStreamTransformStateKey;
     return [roots copy];
 }
 
++ (NSString *)settingStringForKey:(NSString *)key {
+    id value = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+    if ([value isKindOfClass:[NSString class]]) {
+        return (NSString *)value;
+    }
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return [(NSNumber *)value stringValue];
+    }
+    return nil;
+}
+
++ (CGFloat)scaleValueForKey:(NSString *)key {
+    NSString *scaleValue = [self settingStringForKey:key];
+    if (scaleValue.length == 0) {
+        return 1.0;
+    }
+    CGFloat scale = [scaleValue floatValue];
+    return scale > 0.0 ? scale : 1.0;
+}
+
++ (CGFloat)verticalOffsetYForKey:(NSString *)key {
+    NSString *value = [self settingStringForKey:key];
+    if (value.length == 0) {
+        return 0.0;
+    }
+    // 与播放交互层一致：设置上移为正、下移为负，UIKit ty 取反。
+    return -[value floatValue];
+}
+
 + (BOOL)view:(UIView *)view containsClass:(Class)targetClass {
     return targetClass && [DYYYUtils containsSubviewOfClass:targetClass inContainer:view];
+}
+
++ (BOOL)isRightInteractionStack:(UIView *)stackView {
+    if (!stackView) {
+        return NO;
+    }
+    NSString *label = stackView.accessibilityLabel ?: @"";
+    if ([label isEqualToString:@"right"]) {
+        return YES;
+    }
+    if ([self view:stackView containsClass:NSClassFromString(@"AFDCancelMuteAwemeView")] ||
+        [self view:stackView containsClass:NSClassFromString(@"AWEPlayInteractionUserAvatarView")]) {
+        return YES;
+    }
+    for (UIView *sub in [stackView.subviews copy]) {
+        if (![sub respondsToSelector:@selector(elementClassName)]) {
+            continue;
+        }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        NSString *elementClassName = [sub performSelector:@selector(elementClassName)];
+#pragma clang diagnostic pop
+        if ([elementClassName isEqualToString:@"AWEPlayInteractionUserAvatarOptElementElement"]) {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 + (BOOL)stackViewHasNestedScalableStack:(UIView *)stackView stackViews:(NSArray<UIView *> *)stackViews {
@@ -268,7 +324,9 @@ static char kDYYYLivePreStreamTransformStateKey;
         }
         if ([self view:candidate containsClass:guideClass] ||
             [self view:candidate containsClass:muteClass] ||
-            [self view:candidate containsClass:tagClass]) {
+            [self view:candidate containsClass:tagClass] ||
+            [self isRightInteractionStack:candidate] ||
+            [self view:candidate containsClass:NSClassFromString(@"AWELiveFeedStatusLabel")]) {
             return YES;
         }
     }
@@ -277,20 +335,22 @@ static char kDYYYLivePreStreamTransformStateKey;
 
 + (NSMapTable<UIView *, NSValue *> *)localTransformsForStackViews:(NSArray<UIView *> *)stackViews {
     Class guideClass = NSClassFromString(@"AWELivePrestreamGuideView");
-    Class muteClass = NSClassFromString(@"AFDCancelMuteAwemeView");
     Class tagClass = NSClassFromString(@"AWELiveFeedLabelTagView");
+    Class enterLiveClass = NSClassFromString(@"AWELiveFeedStatusLabel");
 
-    CGFloat labelScaleValue = DYYYGetFloat(@"DYYYNicknameScale");
-    CGFloat targetLabelScale = labelScaleValue != 0.0 ? MAX(0.01, labelScaleValue) : 1.0;
-    CGFloat elementScaleValue = DYYYGetFloat(@"DYYYElementScale");
-    CGFloat targetElementScale = elementScaleValue != 0.0 ? MAX(0.01, elementScaleValue) : 1.0;
+    CGFloat nicknameScale = [self scaleValueForKey:@"DYYYNicknameScale"];
+    CGFloat descriptionScale = [self scaleValueForKey:@"DYYYDescriptionScale"];
+    CGFloat elementScale = [self scaleValueForKey:@"DYYYElementScale"];
+    CGFloat nicknameOffset = [self verticalOffsetYForKey:@"DYYYNicknameVerticalOffset"];
+    CGFloat descriptionOffset = [self verticalOffsetYForKey:@"DYYYDescriptionVerticalOffset"];
 
     NSMapTable<UIView *, NSValue *> *transforms = [NSMapTable strongToStrongObjectsMapTable];
     for (UIView *stackView in stackViews) {
         BOOL hasGuide = [self view:stackView containsClass:guideClass];
-        BOOL hasMute = [self view:stackView containsClass:muteClass];
         BOOL hasTag = [self view:stackView containsClass:tagClass];
-        if ((!hasGuide && !hasMute && !hasTag) ||
+        BOOL hasEnterLive = [self view:stackView containsClass:enterLiveClass];
+        BOOL isRightStack = [self isRightInteractionStack:stackView];
+        if ((!hasGuide && !hasTag && !isRightStack && !hasEnterLive) ||
             [self stackViewHasNestedScalableStack:stackView stackViews:stackViews]) {
             continue;
         }
@@ -299,20 +359,41 @@ static char kDYYYLivePreStreamTransformStateKey;
         CGFloat tx = 0.0;
         CGFloat ty = 0.0;
         CGFloat boundsWidth = CGRectGetWidth(stackView.bounds);
-        if (hasGuide) {
-            scale = targetLabelScale;
-            tx = (boundsWidth - boundsWidth * scale) / 2.0 - boundsWidth * (1.0 - scale);
-        } else if (hasMute) {
-            scale = targetElementScale;
+        if (hasEnterLive) {
+            // 「点击进入直播间」在预览页水平居中；沿用该层缩放，但 tx=0，避免左右缘补偿推偏。
+            if (isRightStack) {
+                scale = elementScale;
+            } else if (hasTag) {
+                BOOL hasDescriptionScale = fabs(descriptionScale - 1.0) > 0.0001;
+                BOOL hasDescriptionOffset = fabs(descriptionOffset) > 0.0001;
+                scale = hasDescriptionScale ? descriptionScale : nicknameScale;
+                ty = hasDescriptionOffset ? descriptionOffset : nicknameOffset;
+            } else {
+                scale = nicknameScale;
+                ty = nicknameOffset;
+            }
+            tx = 0.0;
+        } else if (isRightStack) {
+            scale = elementScale;
             tx = (boundsWidth - boundsWidth * scale) / 2.0;
+        } else if (hasGuide) {
+            scale = nicknameScale;
+            tx = -boundsWidth * (1.0 - scale) / 2.0;
+            ty = nicknameOffset;
         } else if (hasTag) {
-            scale = targetLabelScale;
-            tx = (boundsWidth - boundsWidth * scale) / -2.0;
+            // 直播胶囊对齐文案缩放与 Y 轴；未单独设置时回退昵称，避免停在原位。
+            BOOL hasDescriptionScale = fabs(descriptionScale - 1.0) > 0.0001;
+            BOOL hasDescriptionOffset = fabs(descriptionOffset) > 0.0001;
+            scale = hasDescriptionScale ? descriptionScale : nicknameScale;
+            tx = -boundsWidth * (1.0 - scale) / 2.0;
+            ty = hasDescriptionOffset ? descriptionOffset : nicknameOffset;
         }
 
-        for (UIView *subview in [stackView.subviews copy]) {
-            CGFloat viewHeight = CGRectGetHeight(subview.bounds);
-            ty += (viewHeight - viewHeight * scale) / 2.0;
+        if (!hasEnterLive) {
+            for (UIView *subview in [stackView.subviews copy]) {
+                CGFloat viewHeight = CGRectGetHeight(subview.bounds);
+                ty += (viewHeight - viewHeight * scale) / 2.0;
+            }
         }
         [transforms setObject:[NSValue valueWithCGAffineTransform:CGAffineTransformMake(scale, 0.0, 0.0, scale, tx, ty)]
                        forKey:stackView];
