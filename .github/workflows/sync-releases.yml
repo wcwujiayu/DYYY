@@ -1,0 +1,47 @@
+name: Auto Sync Upstream Releases
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 每天定时检查一次（UTC时间3点）
+  workflow_dispatch: # 允许你在网页上随时手动点击运行
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync Latest Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM: VexCove/DYYY # 原作者的仓库地址
+        run: |
+          # 1. 获取原仓库最新 Release 的版本号
+          TAG=$(gh release view --repo $UPSTREAM --json tagName -q .tagName || echo "")
+          
+          if [ -z "$TAG" ]; then
+            echo "上游仓库尚未发布任何 Release。"
+            exit 0
+          fi
+
+          # 2. 检查自己仓库是否已经同步过这个版本
+          if gh release view $TAG --repo ${{ github.repository }} > /dev/null 2>&1; then
+            echo "版本 $TAG 已经在你的仓库中，无需重复同步。"
+            exit 0
+          fi
+
+          echo "发现新版本: $TAG，开始搬运..."
+
+          # 3. 创建临时文件夹并下载原仓库的 Release 附件和更新日志
+          mkdir -p temp_assets
+          cd temp_assets
+          gh release download $TAG --repo $UPSTREAM
+          gh release view $TAG --repo $UPSTREAM --json body -q .body > notes.md
+          gh release view $TAG --repo $UPSTREAM --json name -q .name > title.txt
+          TITLE=$(cat title.txt)
+
+          # 4. 在你的仓库中创建一个完全一样的 Release 并上传文件
+          gh release create $TAG * --title "$TITLE" --notes-file notes.md --repo ${{ github.repository }}
