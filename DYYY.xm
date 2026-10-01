@@ -16068,6 +16068,8 @@ static Class tabBarButtonClass = nil;
 
 %end
 
+static void DYYYHideVideoAIParseBar(UIView *view);
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
@@ -16086,10 +16088,57 @@ static Class tabBarButtonClass = nil;
     reloadClearButtonConfiguration();
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    // AI 解析隐藏：布局完全稳定后执行，避免在 layout 过程中改视图导致上移
+    if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DYYYHideVideoAIParseBar(self.view);
+        });
+    }
+}
+
 - (void)setModel:(AWEAwemeModel *)model {
     %orig(model);
     if (self.view.window && !self.view.hidden) {
         DYYYScheduleCurrentAwemeTracking(self, model);
+    }
+}
+
+static void DYYYHideVideoAIParseBar(UIView *view) {
+    if (!view) {
+        return;
+    }
+    if ([view isKindOfClass:[UILabel class]]) {
+        UILabel *label = (UILabel *)view;
+        NSString *text = label.text;
+        if (text.length > 0 && ([text hasPrefix:@"AI 解析"] || [text hasPrefix:@"AI解析"] || [text containsString:@"AI 解析"])) {
+            UIView *container = label.superview;
+            UIView *superview = container.superview;
+            // 防止重复处理：检查是否已经是占位视图
+            if (container && superview && ![container.accessibilityIdentifier isEqualToString:@"DYYYAIParsePlaceholder"]) {
+                CGRect frame = container.frame;
+                NSInteger index = [superview.subviews indexOfObject:container];
+                // 创建同尺寸透明占位
+                UIView *placeholder = [[UIView alloc] initWithFrame:frame];
+                placeholder.accessibilityIdentifier = @"DYYYAIParsePlaceholder";
+                placeholder.backgroundColor = [UIColor clearColor];
+                placeholder.userInteractionEnabled = NO;
+                placeholder.autoresizingMask = container.autoresizingMask;
+                placeholder.clipsToBounds = YES;
+                // 先加占位，再移除原容器，保证同一 runloop 内无缝替换
+                if (index != NSNotFound) {
+                    [superview insertSubview:placeholder atIndex:index];
+                } else {
+                    [superview addSubview:placeholder];
+                }
+                [container removeFromSuperview];
+            }
+            return;
+        }
+    }
+    for (UIView *subview in [view.subviews copy]) {
+        DYYYHideVideoAIParseBar(subview);
     }
 }
 
