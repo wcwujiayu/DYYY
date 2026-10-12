@@ -38,8 +38,6 @@
 #import "DYYYHideCommentAIAnalysisHooks.h"
 #import "DYYYHideTemplateCollectionHooks.h"
 #import "DYYYSearchKeyboardVoiceHooks.h"
-#import "DYYYHighFPSHooks.h"
-#import "DYYYFPSOverlay.h"
 #import "DYYYHookManager.h"
 #import "DYYYMiniProgramRewardBypass.h"
 #import "DYYYPrivacyRecordUploadGuard.h"
@@ -17636,7 +17634,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
     DYYYMigrateScaleAndSizeSettingsIfNeeded();
     DYYYMigrateScaleAndSizeSettingsV2IfNeeded();
 
-    // 仅在构造阶段准备 C Hook；UIKit 与宿主帧率对象延后至 App 激活后访问。
+    // 仅在构造阶段准备 C Hook；UIKit 相关访问延后至 App 激活后。
     DYYYHookManagerStartLoaderSafePhase();
     DYYYStartHideFeedAnchorHookInstaller();
 

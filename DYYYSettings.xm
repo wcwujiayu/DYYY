@@ -23,8 +23,6 @@
 #import "DYYYConstants.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
-#import "DYYYFPSOverlay.h"
-#import "DYYYHighFPSHooks.h"
 #import "DYYYSettingsHelper.h"
 #import "DYYYUtils.h"
 
@@ -53,12 +51,6 @@ static NSString *const kDYYYFeedNowPlayingSettingIdentifier = @"DYYYDisableFeedN
 static NSString *const kDYYYFeedNowPlayingSVGIconName = @"ic_liveactivityplayslash_dyyy_outlined_20";
 static NSString *const kDYYYExactInteractionCountsSettingIdentifier = DYYY_SHOW_EXACT_INTERACTION_COUNTS_KEY;
 static NSString *const kDYYYExactInteractionCountsSVGIconName = @"ic_numberformat_dyyy_outlined_20";
-static NSString *const kDYYYEnableHighFPSSettingTitle = @"开启最高可用帧率";
-static NSString *const kDYYYEnableHighFPSSettingIdentifier = @"DYYYEnableHighFPS";
-static NSString *const kDYYYEnableHighFPSSVGIconName = @"ic_highfps_dyyy_outlined_20";
-static NSString *const kDYYYShowFPSOverlaySettingTitle = @"实时帧率显示";
-static NSString *const kDYYYShowFPSOverlaySettingIdentifier = @"DYYYShowFPSOverlay";
-static NSString *const kDYYYShowFPSOverlaySVGIconName = @"ic_fpsoverlay_dyyy_outlined_20";
 static NSString *const kDYYYCommentPausePlaybackSettingIdentifier = @"DYYYCommentPausePlayback";
 static NSString *const kDYYYCommentPausePlaybackSVGIconName = @"ic_commentpause_dyyy_outlined_20";
 static NSString *const kDYYYAlbumMediaDescriptionSettingIdentifier = DYYY_ALBUM_MEDIA_DESCRIPTION_KEY;
@@ -174,85 +166,6 @@ static UIImage *DYYYFeedNowPlayingIcon(CGSize requestedSize) {
       CGContextMoveToPoint(context, 3.6, 2.65);
       CGContextAddLineToPoint(context, 16.4, 17.35);
       CGContextStrokePath(context);
-    });
-}
-
-static UIImage *DYYYEnableHighFPSIcon(CGSize requestedSize) {
-    return DYYYRenderGeneratedSettingTemplateIcon(@"enable-high-fps", requestedSize, ^(CGContextRef context, CGSize targetSize) {
-      CGContextScaleCTM(context, targetSize.width / 20.0, targetSize.height / 20.0);
-      UIColor *iconColor = [UIColor colorWithRed:22.0 / 255.0 green:24.0 / 255.0 blue:35.0 / 255.0 alpha:1.0];
-      [iconColor setStroke];
-      [iconColor setFill];
-      CGContextSetLineWidth(context, 1.55);
-      CGContextSetLineCap(context, kCGLineCapRound);
-      CGContextSetLineJoin(context, kCGLineJoinRound);
-
-      // 屏幕外框，呼应「帧率 / 刷新」
-      UIBezierPath *screen = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(3.1, 2.4, 13.8, 15.2) cornerRadius:2.4];
-      screen.lineWidth = 1.55;
-      [screen stroke];
-
-      // 刷新圆环
-      UIBezierPath *ring = [UIBezierPath bezierPathWithArcCenter:CGPointMake(10.0, 9.4)
-                                                          radius:3.55
-                                                      startAngle:(-55.0 * M_PI / 180.0)
-                                                        endAngle:(235.0 * M_PI / 180.0)
-                                                       clockwise:YES];
-      ring.lineWidth = 1.55;
-      [ring stroke];
-
-      // 环末端箭头
-      UIBezierPath *arrow = [UIBezierPath bezierPath];
-      [arrow moveToPoint:CGPointMake(12.55, 5.55)];
-      [arrow addLineToPoint:CGPointMake(14.35, 5.05)];
-      [arrow addLineToPoint:CGPointMake(13.55, 6.85)];
-      arrow.lineWidth = 1.45;
-      arrow.lineCapStyle = kCGLineCapRound;
-      arrow.lineJoinStyle = kCGLineJoinRound;
-      [arrow stroke];
-
-      // 底部速度短条，暗示更高刷新
-      UIBezierPath *bars = [UIBezierPath bezierPath];
-      [bars moveToPoint:CGPointMake(6.4, 15.55)];
-      [bars addLineToPoint:CGPointMake(8.0, 15.55)];
-      [bars moveToPoint:CGPointMake(9.15, 14.85)];
-      [bars addLineToPoint:CGPointMake(11.35, 14.85)];
-      [bars moveToPoint:CGPointMake(12.5, 14.15)];
-      [bars addLineToPoint:CGPointMake(14.5, 14.15)];
-      bars.lineWidth = 1.45;
-      bars.lineCapStyle = kCGLineCapRound;
-      [bars stroke];
-    });
-}
-
-static UIImage *DYYYShowFPSOverlayIcon(CGSize requestedSize) {
-    return DYYYRenderGeneratedSettingTemplateIcon(@"show-fps-overlay", requestedSize, ^(CGContextRef context, CGSize targetSize) {
-      CGContextScaleCTM(context, targetSize.width / 20.0, targetSize.height / 20.0);
-      UIColor *iconColor = [UIColor colorWithRed:22.0 / 255.0 green:24.0 / 255.0 blue:35.0 / 255.0 alpha:1.0];
-      [iconColor setStroke];
-      [iconColor setFill];
-      CGContextSetLineWidth(context, 1.55);
-      CGContextSetLineCap(context, kCGLineCapRound);
-      CGContextSetLineJoin(context, kCGLineJoinRound);
-
-      // 浮窗胶囊外形
-      UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(2.4, 6.4, 15.2, 7.2) cornerRadius:3.6];
-      pill.lineWidth = 1.55;
-      [pill stroke];
-
-      // 三条高度递进的柱，表示实时帧率
-      UIBezierPath *bars = [UIBezierPath bezierPath];
-      [bars moveToPoint:CGPointMake(5.6, 11.4)];
-      [bars addLineToPoint:CGPointMake(5.6, 9.6)];
-      [bars moveToPoint:CGPointMake(8.5, 11.4)];
-      [bars addLineToPoint:CGPointMake(8.5, 8.5)];
-      [bars moveToPoint:CGPointMake(11.4, 11.4)];
-      [bars addLineToPoint:CGPointMake(11.4, 7.7)];
-      [bars moveToPoint:CGPointMake(14.3, 11.4)];
-      [bars addLineToPoint:CGPointMake(14.3, 8.9)];
-      bars.lineWidth = 1.55;
-      bars.lineCapStyle = kCGLineCapRound;
-      [bars stroke];
     });
 }
 
@@ -423,8 +336,6 @@ static UIImage *DYYYExactInteractionCountsIcon(CGSize requestedSize) {
 
 static BOOL DYYYIsGeneratedSettingIconIdentifier(NSString *identifier) {
     return [identifier isEqualToString:kDYYYFeedNowPlayingSettingIdentifier] ||
-           [identifier isEqualToString:kDYYYEnableHighFPSSettingIdentifier] ||
-           [identifier isEqualToString:kDYYYShowFPSOverlaySettingIdentifier] ||
            [identifier isEqualToString:kDYYYCommentPausePlaybackSettingIdentifier] ||
            [identifier isEqualToString:kDYYYMiniProgramJumpingAdsSettingIdentifier] ||
            [identifier isEqualToString:kDYYYExactInteractionCountsSettingIdentifier] ||
@@ -435,12 +346,6 @@ static BOOL DYYYIsGeneratedSettingIconIdentifier(NSString *identifier) {
 static UIImage *DYYYGeneratedSettingIconForIdentifier(NSString *identifier, CGSize targetSize) {
     if ([identifier isEqualToString:kDYYYFeedNowPlayingSettingIdentifier]) {
         return DYYYFeedNowPlayingIcon(targetSize);
-    }
-    if ([identifier isEqualToString:kDYYYEnableHighFPSSettingIdentifier]) {
-        return DYYYEnableHighFPSIcon(targetSize);
-    }
-    if ([identifier isEqualToString:kDYYYShowFPSOverlaySettingIdentifier]) {
-        return DYYYShowFPSOverlayIcon(targetSize);
     }
     if ([identifier isEqualToString:kDYYYCommentPausePlaybackSettingIdentifier]) {
         return DYYYCommentPausePlaybackIcon(targetSize);
@@ -2530,20 +2435,9 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           [areaLabelItems addObject:item];
       }
 
-      // 【画质帧率】
+      // 【画质】
       NSMutableArray<AWESettingItemModel *> *qualityItems = [NSMutableArray array];
       NSArray *qualitySettings = @[
-          @{@"identifier" : kDYYYEnableHighFPSSettingIdentifier,
-            @"title" : kDYYYEnableHighFPSSettingTitle,
-            @"subTitle" : @"开启后使用设备最高可用帧率，负载过重时会自动降档；可能增加耗电，按需开启。",
-            @"detail" : @"",
-            @"cellType" : @37,
-            @"imageName" : kDYYYEnableHighFPSSVGIconName},
-          @{@"identifier" : kDYYYShowFPSOverlaySettingIdentifier,
-            @"title" : kDYYYShowFPSOverlaySettingTitle,
-            @"detail" : @"",
-            @"cellType" : @6,
-            @"imageName" : kDYYYShowFPSOverlaySVGIconName},
           @{@"identifier" : @"DYYYEnableVideoHighestQuality",
             @"title" : @"提高视频画质",
             @"detail" : @"",
@@ -2560,25 +2454,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       for (NSDictionary *dict in qualitySettings) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict cellTapHandlers:cellTapHandlers];
 
-          if ([item.identifier isEqualToString:kDYYYEnableHighFPSSettingIdentifier]) {
-              void (^originalSwitchChangedBlock)(void) = item.switchChangedBlock;
-              item.switchChangedBlock = ^{
-                if (originalSwitchChangedBlock) {
-                    originalSwitchChangedBlock();
-                }
-                BOOL enabled = [DYYYSettingsHelper getUserDefaults:kDYYYEnableHighFPSSettingIdentifier];
-                DYYYApplyHighFPSSettingChange(enabled);
-                DYYYApplyFPSOverlaySettingChange();
-              };
-          } else if ([item.identifier isEqualToString:kDYYYShowFPSOverlaySettingIdentifier]) {
-              void (^originalSwitchChangedBlock)(void) = item.switchChangedBlock;
-              item.switchChangedBlock = ^{
-                if (originalSwitchChangedBlock) {
-                    originalSwitchChangedBlock();
-                }
-                DYYYApplyFPSOverlaySettingChange();
-              };
-          } else if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
+          if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
               NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYHDRMode"] ?: @"关闭";
               item.detail = savedMode;
               item.cellTappedBlock = ^{
@@ -2895,7 +2771,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"弹幕" items:danmuItems]];
       [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"属地标签" items:areaLabelItems]];
       [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"直播" items:liveItems]];
-      [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"画质帧率" items:qualityItems]];
+      [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"画质" items:qualityItems]];
       [sections addObject:[DYYYSettingsHelper createSectionWithTitle:@"推荐过滤"
                                                          footerTitle:@"请不要同时开启过多过滤推荐项目，这会增大视频流加载延迟。"
                                                                items:filterItems]];

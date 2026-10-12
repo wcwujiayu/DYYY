@@ -26,12 +26,6 @@
 // 互动数超过一万时显示完整整数，关闭后恢复宿主的万字缩写
 #define DYYY_SHOW_EXACT_INTERACTION_COUNTS_KEY @"DYYYShowExactInteractionCounts"
 
-// 开启设备最高可用帧率（ProMotion 门闩 + 抖音 AWEProMotionFPSBooster / 关闭 DisplayLink 降帧；负载过重时自动降档）
-#define DYYY_ENABLE_HIGH_FPS_KEY @"DYYYEnableHighFPS"
-
-// 实时帧率浮窗（依赖 DYYYEnableHighFPS）
-#define DYYY_SHOW_FPS_OVERLAY_KEY @"DYYYShowFPSOverlay"
-
 // 保存媒体到相册时是否写入作者、作品链接、文案和发布时间
 #define DYYY_ALBUM_MEDIA_DESCRIPTION_KEY @"DYYYAlbumMediaDescription"
 

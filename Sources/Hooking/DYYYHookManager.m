@@ -1,13 +1,11 @@
 #import "DYYYHookManager.h"
 
 #import "DYYYFeedTagHooks.h"
-#import "DYYYFPSOverlay.h"
 #import "DYYYHideCommentAIAnalysisHooks.h"
 #import "DYYYHideMessageAndMinePageHooks.h"
 #import "DYYYHideMusicButtonHooks.h"
 #import "DYYYHideShareContentViewHooks.h"
 #import "DYYYHideTemplateCollectionHooks.h"
-#import "DYYYHighFPSHooks.h"
 #import "DYYYExactInteractionCountHooks.h"
 #import "DYYYLoginRepairHooks.h"
 #import "DYYYMiniProgramRewardBypass.h"
@@ -31,7 +29,6 @@ typedef struct {
 } DYYYHookDescriptor;
 
 static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
-    { "performance.high-fps", DYYYHookPhaseLoaderSafe, DYYYStartHighFPSHooks },
     { "feed.tags", DYYYHookPhaseLoaderSafe, DYYYStartFeedTagHooks },
     { "share.prompt", DYYYHookPhaseLoaderSafe, DYYYStartHideShareContentViewHooks },
     { "login.repair", DYYYHookPhaseAfterLoginCore, DYYYLoginRepairInstallHooks },
@@ -41,7 +38,6 @@ static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
     { "comment.extra-tabs", DYYYHookPhaseAfterAgreement, DYYYStartHideCommentAIAnalysisHooks },
     { "feed.template", DYYYHookPhaseAfterAgreement, DYYYStartHideTemplateCollectionHooks },
     { "search.keyboard-voice", DYYYHookPhaseAfterAgreement, DYYYStartSearchKeyboardVoiceHooks },
-    { "performance.fps-overlay", DYYYHookPhaseAfterAgreement, DYYYStartFPSOverlay },
     { "interaction-counts.exact", DYYYHookPhaseAfterAgreement, DYYYStartExactInteractionCountHooks },
 };
 
