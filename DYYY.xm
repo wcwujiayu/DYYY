@@ -144,8 +144,8 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 
 %hook NSURLSessionConfiguration
 - (NSDictionary *)HTTPAdditionalHeaders {
-    NSDictionary *origHeaders = %orig;
-    return DYYYLoginBypassHeadersByReplacingBundleIdentifiers(origHeaders);
+    NSDictionary *originalHeaders = %orig;
+    return DYYYLoginBypassHeadersByReplacingBundleIdentifiers(originalHeaders);
 }
 
 - (void)setHTTPAdditionalHeaders:(NSDictionary *)headers {
@@ -15997,19 +15997,11 @@ static Class tabBarButtonClass = nil;
             %orig(frame);
             return;
         }
-        // 只拉伸“几乎占满屏宽、且顶部对齐”的视频层，避免把评论面板 / HUD / 侧边容器
-        // 一起撑高造成位移；目标高度用真实屏幕高度，而不是可能更高的可滚动父容器。
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        BOOL fullWidth = fabs(frame.size.width - screenW) < 1.0;
-        BOOL topAligned = frame.origin.y < 1.0;
         CGRect superF = self.superview.frame;
-        if (fullWidth && topAligned &&
-            CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 &&
-            CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
+        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
             CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
             if (fabs(diff - gCurrentTabBarHeight) < 1.0) {
-                frame.size.height = screenH;
+                frame.size.height = CGRectGetHeight(superF);
             }
         }
 
@@ -16171,7 +16163,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         return;
     }
 
-    UIViewController *parentVC = self.parentViewController;
+    UIViewController *directParentVC = self.parentViewController;
+    UIViewController *parentVC = directParentVC;
     int maxIterations = 3;
     int count = 0;
 
@@ -16181,6 +16174,66 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
         parentVC = parentVC.parentViewController;
         count++;
+    }
+
+    BOOL isShowingRelatedMixViewController = NO;
+    UIViewController *sceneParentVC = directParentVC;
+    int sceneDepth = 0;
+    while (sceneParentVC && sceneDepth < 8) {
+        if ([sceneParentVC isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)]) {
+            AWEMixVideoPanelDetailTableViewController *mixDetailVC = (AWEMixVideoPanelDetailTableViewController *)sceneParentVC;
+            isShowingRelatedMixViewController = mixDetailVC.isShowingRelatedMixViewController;
+            break;
+        }
+        sceneParentVC = sceneParentVC.parentViewController;
+        sceneDepth++;
+    }
+
+    if (!self.view.superview) {
+        return;
+    }
+
+    CGRect frame = self.view.frame;
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat superviewHeight = self.view.superview.frame.size.height;
+
+    if (frame.size.width != screenWidth && frame.size.height < superviewHeight) {
+        return;
+    }
+
+    NSString *currentReferString = self.referString;
+
+    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
+                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
+                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
+
+    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
+        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
+        if (richContentVCClass && [directParentVC isKindOfClass:richContentVCClass]) {
+            useFullHeight = YES;
+        }
+    }
+
+    if (!useFullHeight && [currentReferString isEqualToString:@"chat"]) {
+        AWEAwemeModel *currentModel = self.model;
+        BOOL isLiveModel = currentModel && (([currentModel respondsToSelector:@selector(isLive)] && currentModel.isLive) ||
+                                            ([currentModel respondsToSelector:@selector(cellRoom)] && currentModel.cellRoom != nil) ||
+                                            ([currentModel respondsToSelector:@selector(videoFeedTag)] && [currentModel.videoFeedTag isEqualToString:@"直播中"]));
+
+        // 私信视频的信息区依赖完整高度；直播内容保持原布局，避免影响直播文案位置。
+        if (!isLiveModel) {
+            useFullHeight = YES;
+        }
+    }
+
+    if (useFullHeight) {
+        frame.size.height = superviewHeight;
+    } else {
+        frame.size.height = superviewHeight - gCurrentTabBarHeight;
+    }
+
+    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+        self.view.frame = frame;
     }
 }
 
