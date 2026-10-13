@@ -144,7 +144,8 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 
 %hook NSURLSessionConfiguration
 - (NSDictionary *)HTTPAdditionalHeaders {
-    return DYYYLoginBypassHeadersByReplacingBundleIdentifiers(%orig);
+    NSDictionary *origHeaders = %orig;
+    return DYYYLoginBypassHeadersByReplacingBundleIdentifiers(origHeaders);
 }
 
 - (void)setHTTPAdditionalHeaders:(NSDictionary *)headers {
