@@ -21,6 +21,8 @@ SCHEME ?= rootless
 ifeq ($(SCHEME),roothide)
     export THEOS_PACKAGE_SCHEME = roothide
     export FINALPACKAGE = 1
+    # roothide 运行环境本身就是 arm64e，必须保留 arm64e 切片
+    ARCHS = arm64 arm64e
 else ifeq ($(SCHEME),rootful)
     unexport THEOS_PACKAGE_SCHEME
 else ifeq ($(SCHEME),rootless)
