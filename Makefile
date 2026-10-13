@@ -9,7 +9,10 @@
 -include Makefile.local
 
 TARGET = iphone:clang:latest:14.0
-ARCHS = arm64 arm64e
+# 只编 arm64：iOS 15/16 的 AMFI 在加载 arm64e 切片的 PAC 签名时经常拒绝，
+# 表现为 dyld 映射阶段 EXC_BAD_ACCESS/SIGKILL-CODESIGNING 崩溃（进程起不来）。
+# arm64 dylib 在 arm64e 设备上完全兼容，可规避该崩溃。
+ARCHS = arm64
 
 #export THEOS_PACKAGE_SCHEME=roothide
 

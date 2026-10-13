@@ -15997,11 +15997,19 @@ static Class tabBarButtonClass = nil;
             %orig(frame);
             return;
         }
+        // 只拉伸“几乎占满屏宽、且顶部对齐”的视频层，避免把评论面板 / HUD / 侧边容器
+        // 一起撑高造成位移；目标高度用真实屏幕高度，而不是可能更高的可滚动父容器。
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        BOOL fullWidth = fabs(frame.size.width - screenW) < 1.0;
+        BOOL topAligned = frame.origin.y < 1.0;
         CGRect superF = self.superview.frame;
-        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
+        if (fullWidth && topAligned &&
+            CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 &&
+            CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
             CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
             if (fabs(diff - gCurrentTabBarHeight) < 1.0) {
-                frame.size.height = CGRectGetHeight(superF);
+                frame.size.height = screenH;
             }
         }
 
@@ -16163,8 +16171,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         return;
     }
 
-    UIViewController *directParentVC = self.parentViewController;
-    UIViewController *parentVC = directParentVC;
+    UIViewController *parentVC = self.parentViewController;
     int maxIterations = 3;
     int count = 0;
 
@@ -16174,80 +16181,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
         parentVC = parentVC.parentViewController;
         count++;
-    }
-
-    BOOL isShowingRelatedMixViewController = NO;
-    UIViewController *sceneParentVC = directParentVC;
-    int sceneDepth = 0;
-    while (sceneParentVC && sceneDepth < 8) {
-        if ([sceneParentVC isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)]) {
-            AWEMixVideoPanelDetailTableViewController *mixDetailVC = (AWEMixVideoPanelDetailTableViewController *)sceneParentVC;
-            isShowingRelatedMixViewController = mixDetailVC.isShowingRelatedMixViewController;
-            break;
-        }
-        sceneParentVC = sceneParentVC.parentViewController;
-        sceneDepth++;
-    }
-
-    if (!self.view.superview) {
-        return;
-    }
-
-    CGRect frame = self.view.frame;
-    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-    CGFloat superviewHeight = self.view.superview.frame.size.height;
-
-    if (frame.size.width != screenWidth && frame.size.height < superviewHeight) {
-        return;
-    }
-
-    NSString *currentReferString = self.referString;
-
-    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
-                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
-        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
-        if (richContentVCClass && [directParentVC isKindOfClass:richContentVCClass]) {
-            useFullHeight = YES;
-        }
-    }
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"chat"]) {
-        AWEAwemeModel *currentModel = self.model;
-        BOOL isLiveModel = currentModel && (([currentModel respondsToSelector:@selector(isLive)] && currentModel.isLive) ||
-                                            ([currentModel respondsToSelector:@selector(cellRoom)] && currentModel.cellRoom != nil) ||
-                                            ([currentModel respondsToSelector:@selector(videoFeedTag)] && [currentModel.videoFeedTag isEqualToString:@"直播中"]));
-
-        // 私信视频的信息区依赖完整高度；直播内容保持原布局，避免影响直播文案位置。
-        if (!isLiveModel) {
-            useFullHeight = YES;
-        }
-    }
-
-    if (useFullHeight) {
-        frame.size.height = superviewHeight;
-    } else {
-        // 按容器实际落位判断，而不是一律硬减 TabBar 高：
-        // 首页 HUD 容器的底边直达屏幕底、下方压着 TabBar，减掉是正确的；
-        // 但详情页（别人/我的作品）与喜欢列表的容器底边上方还有评论输入栏、或本就
-        // 避开了 TabBar，再减一次就会把文案/昵称/点赞栏/进度条整体抬高约一个 TabBar 高
-        // —— 表现为 HUD 向上位移。只有当容器确实贴到屏幕底时才让位给 TabBar。
-        CGFloat tabBarAllowance = MAX(gCurrentTabBarHeight, 0.0);
-        CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-        CGRect superRectInWindow = [self.view.superview convertRect:self.view.superview.bounds toView:nil];
-        CGFloat superBottom = CGRectGetMaxY(superRectInWindow);
-        BOOL superviewReachesScreenBottom = (screenHeight - superBottom) <= tabBarAllowance * 0.5;
-        if (superviewReachesScreenBottom) {
-            frame.size.height = superviewHeight - tabBarAllowance;
-        } else {
-            frame.size.height = superviewHeight;
-        }
-    }
-
-    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-        self.view.frame = frame;
     }
 }
 
