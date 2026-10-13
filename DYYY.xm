@@ -16261,7 +16261,21 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     if (useFullHeight) {
         frame.size.height = superviewHeight;
     } else {
-        frame.size.height = superviewHeight - gCurrentTabBarHeight;
+        // 旧实现一律硬减 gCurrentTabBarHeight：首页的 HUD 容器在表撑满后直达屏幕底、
+        // 下方压着 TabBar，减掉是正确的；但详情页（别人/我的作品）与喜欢列表的容器
+        // 底边上方还有评论输入栏、或本就避开了 TabBar，再减一次就把文案/昵称/点赞栏/
+        // 进度条整体抬高了约一个 TabBar 高——表现为 HUD 向上位移。
+        // 改为按容器实际落位判断：容器底边直达屏幕底（下方没有留白）才让位给 TabBar。
+        CGFloat tabBarAllowance = MAX(gCurrentTabBarHeight, 0.0);
+        CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+        CGRect superRectInWindow = [self.view.superview convertRect:self.view.superview.bounds toView:nil];
+        CGFloat superBottom = CGRectGetMaxY(superRectInWindow);
+        BOOL superviewReachesScreenBottom = (screenHeight - superBottom) <= tabBarAllowance * 0.5;
+        if (superviewReachesScreenBottom) {
+            frame.size.height = superviewHeight - tabBarAllowance;
+        } else {
+            frame.size.height = superviewHeight;
+        }
     }
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
