@@ -61,6 +61,38 @@ static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
 static char kDYYYGlobalTransparencyBaseAlphaKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
 
+#pragma mark - 全屏几何的统一判据
+
+// 「该不该撑、撑到多高」只在这里决定一次。
+//
+// 旧做法是判断高度差是否恰好等于 TabBar 高（fabs(diff - gCurrentTabBarHeight) < 1.0），
+// 依赖全局单例 gCurrentTabBarHeight：它只在 AWENormalModeTabBar 首次布局时取值、之后跨页面复用。
+// 某个页面（如喜欢的视频列表）的压缩量一旦不等于那个值，就会出现「不该撑的撑了、该撑的没撑」，
+// 表现为上下错位且时好时坏——这正是宿主改版后偶发错位的来源。
+//
+// 改用结构关系：容器比视图更高，说明这块几何被压掉了，直接补到容器高度。
+// 不需要知道 TabBar 有多高，也不依赖任何全局变量。
+static const CGFloat kDYYYStretchTolerance = 0.5;
+// 高度不到容器这个比例时视为布局早期的半成品尺寸，参与计算会把下游元素钉到错误位置。
+static const CGFloat kDYYYStretchMinRatio = 0.5;
+
+static BOOL DYYYFullScreenStretchTarget(CGFloat viewHeight, CGFloat containerHeight, CGFloat *outTarget) {
+    if (containerHeight <= 0.0 || viewHeight <= 0.0) {
+        return NO;
+    }
+    // 已经够高：这块几何没被压缩过（部分页面本来就是满高），不在作用域内。
+    if (viewHeight >= containerHeight - kDYYYStretchTolerance) {
+        return NO;
+    }
+    if (viewHeight < containerHeight * kDYYYStretchMinRatio) {
+        return NO;
+    }
+    if (outTarget) {
+        *outTarget = containerHeight;
+    }
+    return YES;
+}
+
 static BOOL DYYYLoginBypassEnabled(void) {
     return [DYYYLoginBypassManager isLoginBypassEnabled];
 }
@@ -15997,12 +16029,12 @@ static Class tabBarButtonClass = nil;
             %orig(frame);
             return;
         }
-        CGRect superF = self.superview.frame;
-        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
-            CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
-            if (fabs(diff - gCurrentTabBarHeight) < 1.0) {
-                frame.size.height = CGRectGetHeight(superF);
-            }
+        // 作用域保持不变（视频播放器链路），只把「要不要撑」的判据从 TabBar 差值匹配
+        // 换成结构关系：容器比这块几何更高就是被压掉了，直接补到容器高度。
+        UIView *superviewRef = self.superview;
+        CGFloat targetHeight = 0.0;
+        if (superviewRef && DYYYFullScreenStretchTarget(CGRectGetHeight(frame), CGRectGetHeight(superviewRef.frame), &targetHeight)) {
+            frame.size.height = targetHeight;
         }
 
         %orig(frame);
@@ -16335,15 +16367,15 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
-        if (contentView && contentView.superview) {
+        UIView *parentView = contentView.superview;
+        if (contentView && parentView) {
             CGRect frame = contentView.frame;
-            CGFloat parentHeight = contentView.superview.frame.size.height;
-
-            if (frame.size.height == parentHeight - gCurrentTabBarHeight) {
-                frame.size.height = parentHeight;
-                contentView.frame = frame;
-            } else if (frame.size.height == parentHeight - (gCurrentTabBarHeight * 2)) {
-                frame.size.height = parentHeight - gCurrentTabBarHeight;
+            // 旧实现要求高度「精确等于 parentHeight - TabBar 高」才撑，浮点相等在宿主改版后
+            // 极易失配；且二级分支还会把高度停在 parentHeight - TabBar 高（就是不全屏）。
+            // 改用结构判据后无需知道 TabBar 高度。
+            CGFloat targetHeight = 0.0;
+            if (DYYYFullScreenStretchTarget(CGRectGetHeight(frame), CGRectGetHeight(parentView.frame), &targetHeight)) {
+                frame.size.height = targetHeight;
                 contentView.frame = frame;
             }
         }
@@ -16383,15 +16415,15 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
-        if (contentView && contentView.superview) {
+        UIView *parentView = contentView.superview;
+        if (contentView && parentView) {
             CGRect frame = contentView.frame;
-            CGFloat parentHeight = contentView.superview.frame.size.height;
-
-            if (frame.size.height == parentHeight - gCurrentTabBarHeight) {
-                frame.size.height = parentHeight;
-                contentView.frame = frame;
-            } else if (frame.size.height == parentHeight - (gCurrentTabBarHeight * 2)) {
-                frame.size.height = parentHeight - gCurrentTabBarHeight;
+            // 旧实现要求高度「精确等于 parentHeight - TabBar 高」才撑，浮点相等在宿主改版后
+            // 极易失配；且二级分支还会把高度停在 parentHeight - TabBar 高（就是不全屏）。
+            // 改用结构判据后无需知道 TabBar 高度。
+            CGFloat targetHeight = 0.0;
+            if (DYYYFullScreenStretchTarget(CGRectGetHeight(frame), CGRectGetHeight(parentView.frame), &targetHeight)) {
+                frame.size.height = targetHeight;
                 contentView.frame = frame;
             }
         }
@@ -16456,9 +16488,12 @@ static char kDYYYFeedTableFullScreenAppliedKey;
         objc_setAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    if (fabs(CGRectGetHeight(self.frame) - superviewHeight) > 0.5) {
+    // 旧实现无条件把表撑到 superview 高度：布局尚未排好时的中间尺寸也会被当成有效目标，
+    // 且 TabBar 高度没捕获到时会直接错撑。改走统一结构判据（内含「已够高」与「半成品」两道守卫）。
+    CGFloat targetHeight = 0.0;
+    if (DYYYFullScreenStretchTarget(CGRectGetHeight(self.frame), superviewHeight, &targetHeight)) {
         CGRect frame = self.frame;
-        frame.size.height = superviewHeight;
+        frame.size.height = targetHeight;
         self.frame = frame;
     }
 }
@@ -17237,12 +17272,14 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
+    // 旧实现用 fmod 把高度强行凑到屏幕高度的整数倍（例如高度 1400、屏高 932 时会补到
+    // 2 倍屏高 1864），属明确的逻辑错误，会把表撑成数倍屏高并造成严重错位。
+    // 改为结构判据：容器比这张表更高就补到容器高度。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-
-        CGFloat remainder = fmod(frame.size.height, screenHeight);
-        if (remainder != 0) {
-            frame.size.height += (screenHeight - remainder);
+        UIView *superviewRef = self.superview;
+        CGFloat targetHeight = 0.0;
+        if (superviewRef && DYYYFullScreenStretchTarget(CGRectGetHeight(frame), CGRectGetHeight(superviewRef.frame), &targetHeight)) {
+            frame.size.height = targetHeight;
         }
     }
     %orig(frame);
